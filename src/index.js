@@ -254,7 +254,7 @@ async function app(request, env) {
       if (!pages.length) return badRequest("At least one template page is required");
       const safe = {
         active: template.active !== false,
-        keywords: (Array.isArray(template.keywords) ? template.keywords : []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 20),
+        entryUrl: String(template.entryUrl || "").slice(0, 4096),
         altText: String(template.altText || "簽到贈點活動").slice(0, 300),
         rotationMode: template.rotationMode === "sequential" ? "sequential" : "random",
         pages: pages.map((page) => ({
