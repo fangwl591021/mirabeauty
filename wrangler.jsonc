@@ -6,17 +6,17 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*"]
+    "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*", "/assets/checkin-template/*"]
   },
   "vars": {
-    "LIFF_ID": "2010723037-HnKrhEXb",
+    "LIFF_ID": "2010723037-R2QVRIJ8",
     "LINE_LOGIN_CHANNEL_ID": "2010723037"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "mirabeauty_member_crm",
-      "database_id": "ba4aa1c1-c006-4a52-9df7-1b46ec100c27",
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ]
