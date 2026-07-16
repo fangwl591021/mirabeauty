@@ -184,120 +184,25 @@
         </section>
 
         <section class="page" data-content="carousel">
-          <section class="panel form-panel">
-            <div class="panel-head">
-              <div>
-                <h2>簽到贈點輪播模板</h2>
-                <p>
-                  依 MLM 模板模式建立多張輪播卡；會員在 LIFF
-                  內觀看並完成簽到，不使用 OA 關鍵字觸發。
-                </p>
+          <div class="template-section-head"><h3>簽到贈點活動模板</h3><div><span>所見即所得 LINE Flex 多頁活動卡</span><button class="template-back" data-go="dashboard">返回主控台</button></div></div>
+          <article class="templateDesigner">
+            <div class="templateDesignerGrid">
+              <div class="templateControls">
+                <div class="templateBlock templateTriggerBlock">
+                  <div class="templateBlockHead"><strong>觸發設定</strong><span>輸入關鍵字自動回覆</span></div>
+                  <div class="templateTriggerCompact">
+                    <label>觸發關鍵字<textarea id="templateKeywords" placeholder="每行一個，例如：簽到贈點活動"></textarea></label>
+                    <label>替代文字<input id="templateAltText" type="text" placeholder="簽到贈點活動" /></label>
+                    <label>發送輪動<select id="templateRotationMode"><option value="random">隨機輪動</option><option value="sequential">順序輪動</option></select></label>
+                    <label class="templateSwitch"><input id="templateActive" type="checkbox" checked /> 啟用關鍵字觸發</label>
+                  </div>
+                </div>
+                <div class="templateBlock"><div class="templateBlockHead"><strong>頁面設定</strong><div><span id="templateInlineStatus"></span><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div></div><div id="templatePages" class="templatePages"></div></div>
+                <div id="templateStatus" class="templateStatus"></div>
               </div>
+              <aside class="templatePreviewPane"><div class="templateBlockHead"><strong>即時預覽</strong><span>400 x 600，多頁左右排列</span></div><div id="templateVisualPreview" class="templateVisualPreview"></div><details class="templateJsonFold"><summary>JSON 預覽</summary><pre id="templatePreview" class="templatePreview"></pre></details></aside>
             </div>
-            <form id="campaignForm" class="form-grid">
-              <label class="wide"
-                >活動名稱<input
-                  id="campaignName"
-                  placeholder="例如 今日健康小知識"
-                  required /></label
-              ><label
-                >開始時間<input
-                  id="campaignStart"
-                  type="datetime-local"
-                  required /></label
-              ><label
-                >結束時間<input
-                  id="campaignEnd"
-                  type="datetime-local"
-                  required /></label
-              ><label
-                >需完成素材數<input
-                  id="campaignCount"
-                  type="number"
-                  value="1"
-                  min="1"
-                  required /></label
-              ><label
-                >卡片輪動<select id="campaignRotation">
-                  <option value="sequential">順序輪動</option>
-                  <option value="random">隨機輪動</option>
-                </select></label
-              ><label
-                >活動狀態<select id="campaignStatus">
-                  <option value="draft">草稿</option>
-                  <option value="active">啟用</option>
-                </select></label
-              ><button class="primary" type="submit">建立輪播模板</button>
-            </form>
-          </section>
-          <section class="panel form-panel">
-            <div class="panel-head">
-              <div>
-                <h2>新增輪播頁面</h2>
-                <p>
-                  每張卡可設定圖片／影片、圖片點擊連結與最多四個網址按鈕。建立後會回傳頁面
-                  ID。
-                </p>
-              </div>
-            </div>
-            <form id="creativeForm" class="form-grid">
-              <label class="wide"
-                >活動 ID<input
-                  id="creativeCampaign"
-                  placeholder="campaign_…"
-                  required /></label
-              ><label
-                >素材類型<select id="creativeType">
-                  <option value="image">圖片</option>
-                  <option value="video">影片</option>
-                </select></label
-              ><label
-                >頁面標題<input
-                  id="creativeTitle"
-                  placeholder="例如 每日保養提醒" /></label
-              ><label class="wide"
-                >圖片／影片網址<input
-                  id="creativeUrl"
-                  type="url"
-                  placeholder="https://…"
-                  required /></label
-              ><label class="wide"
-                >圖片點擊網址（選填）<input
-                  id="creativeImageLink"
-                  type="url"
-                  placeholder="https://…" /></label
-              ><label
-                >卡片尺寸<select id="creativeBubbleSize">
-                  <option value="nano">nano</option>
-                  <option value="micro">micro</option>
-                  <option value="kilo">kilo</option>
-                </select></label
-              ><label
-                >圖片比例<input
-                  id="creativeAspectRatio"
-                  value="400:600"
-                  placeholder="400:600" /></label
-              ><label
-                >圖片模式<select id="creativeAspectMode">
-                  <option value="cover">cover</option>
-                  <option value="fit">fit</option>
-                </select></label
-              ><label
-                >最低觀看秒數<input
-                  id="creativeSeconds"
-                  type="number"
-                  value="3"
-                  min="0"
-                  required /></label
-              ><label class="wide"
-                >網址按鈕（每行：按鈕文字｜https://網址）<textarea
-                  id="creativeButtons"
-                  rows="4"
-                  placeholder="了解更多｜https://example.com\n前往課程｜https://example.com/course"
-                ></textarea></label
-              ><button class="primary" type="submit">新增輪播頁面</button>
-            </form>
-          </section>
+          </article>
         </section>
 
         <section class="page" data-content="settings">
