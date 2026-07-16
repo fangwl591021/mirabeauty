@@ -81,6 +81,13 @@ function randomInviteToken() {
   );
 }
 
+function normalizeTemplateImageUrl(value) {
+  return String(value || "").replace(
+    "/assets/checkin-template/",
+    "/v1/checkin-template/images/",
+  );
+}
+
 async function app(request, env) {
   const url = new URL(request.url);
   const templateImage = url.pathname.match(/^\/(?:assets\/checkin-template|v1\/checkin-template\/images)\/([^/]+)$/);
@@ -248,6 +255,12 @@ async function app(request, env) {
       const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first();
       let template = null;
       try { template = row?.value ? JSON.parse(row.value) : null; } catch { template = null; }
+      if (template?.pages) {
+        template.pages = template.pages.map((page) => ({
+          ...page,
+          imageUrl: normalizeTemplateImageUrl(page.imageUrl),
+        }));
+      }
       return json({ success: true, template });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template") {
@@ -260,7 +273,7 @@ async function app(request, env) {
         altText: String(template.altText || "簽到贈點活動").slice(0, 300),
         rotationMode: template.rotationMode === "sequential" ? "sequential" : "random",
         pages: pages.map((page) => ({
-          imageUrl: String(page.imageUrl || "").slice(0, 4096), imageLink: String(page.imageLink || "").slice(0, 4096),
+          imageUrl: normalizeTemplateImageUrl(page.imageUrl).slice(0, 4096), imageLink: String(page.imageLink || "").slice(0, 4096),
           bubbleSize: ["nano","micro","deca","hecto","kilo","mega","giga"].includes(page.bubbleSize) ? page.bubbleSize : "nano",
           imageAspectRatio: /^\d{1,4}:\d{1,4}$/.test(String(page.imageAspectRatio || "")) ? page.imageAspectRatio : "400:600",
           imageAspectMode: page.imageAspectMode === "fit" ? "fit" : "cover",
