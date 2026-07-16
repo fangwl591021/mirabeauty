@@ -83,7 +83,7 @@ function randomInviteToken() {
 
 async function app(request, env) {
   const url = new URL(request.url);
-  const templateImage = url.pathname.match(/^\/assets\/checkin-template\/([^/]+)$/);
+  const templateImage = url.pathname.match(/^\/(?:assets\/checkin-template|v1\/checkin-template\/images)\/([^/]+)$/);
   if (request.method === "GET" && templateImage) {
     const row = await env.DB.prepare("SELECT content_type, bytes FROM checkin_template_images WHERE id = ?").bind(templateImage[1]).first();
     return row ? new Response(row.bytes, { headers: { "content-type": row.content_type, "cache-control": "public, max-age=31536000, immutable" } }) : new Response("Not found", { status: 404 });
@@ -288,7 +288,7 @@ async function app(request, env) {
       if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) return badRequest("Only JPEG, PNG, WebP or GIF is allowed");
       const id = newId("template_image");
       await env.DB.prepare("INSERT INTO checkin_template_images (id, content_type, bytes) VALUES (?, ?, ?)").bind(id, file.type, await file.arrayBuffer()).run();
-      return json({ success: true, url: `${url.origin}/assets/checkin-template/${id}`, size: file.size }, 201);
+      return json({ success: true, url: `${url.origin}/v1/checkin-template/images/${id}`, size: file.size }, 201);
     }
     const body = (await readJson(request)) || {};
     if (request.method === "POST" && url.pathname === "/v1/admin/point-rules") {
