@@ -2,7 +2,7 @@ const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
   member: null,
-  tab: "home",
+  tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
   invite: new URLSearchParams(location.search).get("invite") || "",
   daily: null,
 };
@@ -70,7 +70,7 @@ async function login() {
   state.token = r.sessionToken;
   localStorage.setItem("mirabeauty_session", state.token);
   state.member = r.member;
-  history.replaceState({}, "", location.pathname);
+  history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
 }
 async function renderLogin() {
