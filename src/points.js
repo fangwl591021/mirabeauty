@@ -1,0 +1,78 @@
+import { newId } from './member-repository.js';
+
+const MAIN_PROGRAM_ID = 'program_main';
+
+export async function getWallet(db, userId) {
+  const account = await db.prepare(`
+    SELECT pa.id, pa.balance, pp.code AS program_code, pp.name AS program_name
+    FROM point_accounts pa JOIN point_programs pp ON pp.id = pa.program_id
+    WHERE pa.platform_user_id = ? AND pa.program_id = ?
+  `).bind(userId, MAIN_PROGRAM_ID).first();
+  if (!account) return { balance: 0, programCode: 'main', programName: 'MiraBeauty 點數', entries: [] };
+  const result = await db.prepare(`
+    SELECT event_type, event_reference, delta, balance_after, status, created_at
+    FROM point_ledger_entries WHERE point_account_id = ? ORDER BY created_at DESC LIMIT 50
+  `).bind(account.id).all();
+  return {
+    balance: account.balance,
+    programCode: account.program_code,
+    programName: account.program_name,
+    entries: result.results || []
+  };
+}
+
+export async function awardPoints(db, { userId, eventType, eventReference, idempotencyKey, metadata = {} }) {
+  if (!userId || !eventType || !eventReference || !idempotencyKey) throw new Error('Missing point award fields');
+  const existing = await db.prepare(`
+    SELECT id, delta, balance_after FROM point_ledger_entries WHERE idempotency_key = ?
+  `).bind(idempotencyKey).first();
+  if (existing) return { awarded: false, duplicate: true, entry: existing };
+
+  const rule = await db.prepare(`
+    SELECT id, points, daily_limit FROM point_rules
+    WHERE program_id = ? AND event_type = ? AND status = 'active'
+    ORDER BY created_at DESC LIMIT 1
+  `).bind(MAIN_PROGRAM_ID, eventType).first();
+  if (!rule || Number(rule.points) <= 0) return { awarded: false, reason: 'no_active_rule' };
+
+  if (rule.daily_limit !== null && rule.daily_limit !== undefined) {
+    const count = await db.prepare(`
+      SELECT COUNT(*) AS count FROM point_ledger_entries
+      WHERE platform_user_id = ? AND point_rule_id = ? AND status = 'posted'
+        AND date(created_at, '+8 hours') = date('now', '+8 hours')
+    `).bind(userId, rule.id).first();
+    if (Number(count?.count || 0) >= Number(rule.daily_limit)) return { awarded: false, reason: 'daily_limit_reached' };
+  }
+
+  let account = await db.prepare(`
+    SELECT id, balance FROM point_accounts WHERE platform_user_id = ? AND program_id = ?
+  `).bind(userId, MAIN_PROGRAM_ID).first();
+  if (!account) {
+    const accountId = newId('pointacct');
+    await db.prepare('INSERT OR IGNORE INTO point_accounts (id, platform_user_id, program_id) VALUES (?, ?, ?)')
+      .bind(accountId, userId, MAIN_PROGRAM_ID).run();
+    account = await db.prepare('SELECT id, balance FROM point_accounts WHERE platform_user_id = ? AND program_id = ?')
+      .bind(userId, MAIN_PROGRAM_ID).first();
+  }
+
+  const delta = Number(rule.points);
+  const balanceAfter = Number(account.balance) + delta;
+  const entry = { id: newId('ledger'), delta, balanceAfter };
+  try {
+    await db.batch([
+      db.prepare('UPDATE point_accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(balanceAfter, account.id),
+      db.prepare(`
+        INSERT INTO point_ledger_entries
+        (id, point_account_id, platform_user_id, program_id, point_rule_id, event_type, event_reference, idempotency_key, delta, balance_after, metadata_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(entry.id, account.id, userId, MAIN_PROGRAM_ID, rule.id, eventType, eventReference, idempotencyKey, delta, balanceAfter, JSON.stringify(metadata))
+    ]);
+  } catch (error) {
+    if (String(error.message || '').includes('UNIQUE constraint failed: point_ledger_entries.idempotency_key')) {
+      const duplicate = await db.prepare('SELECT id, delta, balance_after FROM point_ledger_entries WHERE idempotency_key = ?').bind(idempotencyKey).first();
+      return { awarded: false, duplicate: true, entry: duplicate };
+    }
+    throw error;
+  }
+  return { awarded: true, duplicate: false, entry };
+}
