@@ -93,7 +93,18 @@ async function app(request, env) {
   const templateImage = url.pathname.match(/^\/(?:assets\/checkin-template|v1\/checkin-template\/images)\/([^/]+)$/);
   if (request.method === "GET" && templateImage) {
     const row = await env.DB.prepare("SELECT content_type, bytes FROM checkin_template_images WHERE id = ?").bind(templateImage[1]).first();
-    return row ? new Response(row.bytes, { headers: { "content-type": row.content_type, "cache-control": "public, max-age=31536000, immutable" } }) : new Response("Not found", { status: 404 });
+    if (!row?.bytes) return new Response("Not found", { status: 404 });
+    const imageBytes = row.bytes instanceof Uint8Array
+      ? row.bytes
+      : new Uint8Array(row.bytes);
+    return new Response(imageBytes, {
+      headers: {
+        "content-type": row.content_type || "application/octet-stream",
+        "content-length": String(imageBytes.byteLength),
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
   }
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
