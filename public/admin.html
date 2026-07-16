@@ -1,1 +1,57 @@
-<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MiraBeauty 管理中心</title><link rel="stylesheet" href="/styles.css"></head><body><main><header class="hero"><h1>MiraBeauty 管理中心</h1><p>內容、課程與點數規則</p></header><div class="content"><div id="status" class="notice">載入中…</div><section class="card"><h2>新增點數規則</h2><input id="ruleEvent" placeholder="事件，例如 daily_ad_checkin"><input id="rulePoints" type="number" placeholder="點數"><select id="ruleStatus"><option value="draft">草稿</option><option value="active">啟用</option></select><button class="btn" data-form="rule">建立規則</button></section><section class="card"><h2>新增課程</h2><input id="courseTitle" placeholder="課程名稱"><input id="courseDesc" placeholder="課程說明"><select id="courseStatus"><option value="draft">草稿</option><option value="published">公開</option></select><button class="btn" data-form="course">建立課程</button></section><section class="card"><h2>新增輪播活動</h2><input id="campaignName" placeholder="活動名稱"><label class="small">開始時間</label><input id="campaignStart" type="datetime-local"><label class="small">結束時間</label><input id="campaignEnd" type="datetime-local"><input id="campaignCount" type="number" value="1" min="1" placeholder="需完成素材數"><select id="campaignStatus"><option value="draft">草稿</option><option value="active">啟用</option></select><button class="btn" data-form="campaign">建立活動</button></section><section class="card"><h2>新增輪播素材</h2><input id="creativeCampaign" placeholder="活動 ID"><select id="creativeType"><option value="image">圖片</option><option value="video">影片</option></select><input id="creativeTitle" placeholder="標題"><input id="creativeUrl" placeholder="圖片／影片網址"><input id="creativeSeconds" type="number" value="3" min="0" placeholder="最低觀看秒數"><button class="btn" data-form="creative">建立素材</button></section></div></main><script type="module">const token=localStorage.getItem('mirabeauty_session')||'';const $=s=>document.querySelector(s);const api=async(p,b)=>{const r=await fetch(p,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+token},body:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error||'失敗');return j};const date=v=>v?new Date(v).toISOString():'';try{const o=await fetch('/v1/admin/overview',{headers:{authorization:'Bearer '+token}}).then(r=>r.json());if(!o.success)throw new Error(o.error);$('#status').textContent=`會員 ${o.overview.members} 人｜公開課程 ${o.overview.publishedCourses} 堂｜啟用輪播 ${o.overview.activeCampaigns} 個`}catch(e){$('#status').textContent='無管理權限：'+e.message}document.querySelectorAll('[data-form]').forEach(b=>b.onclick=async()=>{try{let x;if(b.dataset.form==='rule')x=await api('/v1/admin/point-rules',{eventType:$('#ruleEvent').value,points:+$('#rulePoints').value,status:$('#ruleStatus').value});if(b.dataset.form==='course')x=await api('/v1/admin/courses',{title:$('#courseTitle').value,description:$('#courseDesc').value,status:$('#courseStatus').value});if(b.dataset.form==='campaign')x=await api('/v1/admin/ad-campaigns',{name:$('#campaignName').value,startsAt:date($('#campaignStart').value),endsAt:date($('#campaignEnd').value),requiredCreativeCount:+$('#campaignCount').value,status:$('#campaignStatus').value});if(b.dataset.form==='creative')x=await api('/v1/admin/ad-creatives',{campaignId:$('#creativeCampaign').value,type:$('#creativeType').value,title:$('#creativeTitle').value,mediaUrl:$('#creativeUrl').value,requiredWatchSeconds:+$('#creativeSeconds').value});alert('建立完成，ID：'+x.id)}catch(e){alert(e.message)}})</script></body></html>
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MiraBeauty 營運管理中心</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="/admin.html">MiraBeauty<span>管理中心</span></a>
+      <p class="side-label">營運中心</p>
+      <nav class="side-nav">
+        <button class="nav-item active" data-page="dashboard"><span>◔</span> 營運統計</button>
+        <button class="nav-item" data-page="members"><span>♟</span> 會員 CRM</button>
+        <button class="nav-item" data-page="points"><span>◉</span> 點數規則</button>
+        <button class="nav-item" data-page="courses"><span>▣</span> 課程／活動</button>
+        <button class="nav-item" data-page="carousel"><span>▤</span> 每日輪播贈點</button>
+      </nav>
+      <p class="side-label">系統</p>
+      <nav class="side-nav">
+        <button class="nav-item" data-page="settings"><span>⚙</span> 系統設定</button>
+      </nav>
+      <button class="logout" id="logout">安全登出</button>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div><h1 id="pageTitle">營運統計中心</h1><p id="pageHint">MiraBeauty 會員、點數與活動即時概況</p></div>
+        <div class="top-actions"><span class="health"><i></i> 系統正常</span><button class="outline" id="refresh">↻ 重新同步</button><a class="outline" href="/" target="_blank">▣ 會員前台</a></div>
+      </header>
+      <section id="status" class="status hidden"></section>
+
+      <section class="page active" data-content="dashboard">
+        <div class="metrics">
+          <article><p>系統會員</p><strong id="metricMembers">–</strong><small>LINE Login 已建立帳戶</small></article>
+          <article><p>累計發出點數</p><strong id="metricPoints">–</strong><small>依已啟用規則入帳</small></article>
+          <article><p>上架課程</p><strong id="metricCourses">–</strong><small>公開中的課程／活動</small></article>
+          <article><p>每日簽到</p><strong id="metricCheckins">–</strong><small>累計有效輪播簽到</small></article>
+        </div>
+        <section class="panel"><div class="panel-head"><div><h2>營運快速入口</h2><p>先設定點數規則，再建立活動內容。</p></div></div><div class="quick-grid"><button data-go="points"><b>1</b><span>設定贈點規則</span><small>註冊、分享、每日簽到</small></button><button data-go="courses"><b>2</b><span>建立課程活動</span><small>現場或線上簽到</small></button><button data-go="carousel"><b>3</b><span>建立輪播贈點</span><small>圖像、影片與觀看門檻</small></button><a href="/" target="_blank"><b>↗</b><span>檢視會員前台</span><small>使用 LIFF 驗收流程</small></a></div></section>
+      </section>
+
+      <section class="page" data-content="members"><section class="panel"><div class="panel-head"><div><h2>會員 CRM</h2><p>會員以 LINE Login 建立，推薦人依邀約連結自動固定。</p></div></div><div class="empty"><b>會員資料會持續累積</b><span>目前系統會員數：<strong id="memberTotal">–</strong></span><p>會員前台可查看 LINE 頭貼、姓名、會員編號、系統推薦人、點數錢包與專屬 QR 碼。</p></div></section></section>
+
+      <section class="page" data-content="points"><section class="panel form-panel"><div class="panel-head"><div><h2>新增點數規則</h2><p>事件名稱必須與系統事件一致；輪播每日簽到請填 <code>daily_ad_checkin</code>。</p></div></div><form id="ruleForm" class="form-grid"><label>系統事件<input id="ruleEvent" placeholder="例如 daily_ad_checkin" required></label><label>贈送點數<input id="rulePoints" type="number" min="0" placeholder="例如 10" required></label><label>啟用狀態<select id="ruleStatus"><option value="draft">草稿</option><option value="active">啟用</option></select></label><button class="primary" type="submit">建立點數規則</button></form></section><section class="notice-card"><b>目前可用事件</b><span>daily_ad_checkin（輪播簽到）、course_registered（課程報名）、attendance_verified（課程簽到）。</span></section></section>
+
+      <section class="page" data-content="courses"><section class="panel form-panel"><div class="panel-head"><div><h2>建立課程／活動</h2><p>建立後可再新增現場或線上場次與簽到條件。</p></div></div><form id="courseForm" class="form-grid"><label class="wide">課程名稱<input id="courseTitle" placeholder="例如 夏季會員講座" required></label><label class="wide">課程說明<input id="courseDesc" placeholder="簡短說明"></label><label>公開狀態<select id="courseStatus"><option value="draft">草稿</option><option value="published">公開</option></select></label><button class="primary" type="submit">建立課程</button></form></section></section>
+
+      <section class="page" data-content="carousel"><section class="panel form-panel"><div class="panel-head"><div><h2>建立每日輪播活動</h2><p>活動啟用後，會員看完指定數量素材才能每日簽到。</p></div></div><form id="campaignForm" class="form-grid"><label class="wide">活動名稱<input id="campaignName" placeholder="例如 今日健康小知識" required></label><label>開始時間<input id="campaignStart" type="datetime-local" required></label><label>結束時間<input id="campaignEnd" type="datetime-local" required></label><label>需完成素材數<input id="campaignCount" type="number" value="1" min="1" required></label><label>活動狀態<select id="campaignStatus"><option value="draft">草稿</option><option value="active">啟用</option></select></label><button class="primary" type="submit">建立輪播活動</button></form></section><section class="panel form-panel"><div class="panel-head"><div><h2>新增輪播素材</h2><p>支援公開 HTTPS 圖片或 MP4 影片網址。建立活動後，將回傳的活動 ID 貼入下方。</p></div></div><form id="creativeForm" class="form-grid"><label class="wide">活動 ID<input id="creativeCampaign" placeholder="campaign_…" required></label><label>素材類型<select id="creativeType"><option value="image">圖片</option><option value="video">影片</option></select></label><label>素材標題<input id="creativeTitle" placeholder="例如 每日保養提醒"></label><label class="wide">圖片／影片網址<input id="creativeUrl" type="url" placeholder="https://…" required></label><label>最低觀看秒數<input id="creativeSeconds" type="number" value="3" min="0" required></label><button class="primary" type="submit">新增輪播素材</button></form></section></section>
+
+      <section class="page" data-content="settings"><section class="panel"><div class="panel-head"><div><h2>系統設定</h2><p>LINE Login、LIFF 與 D1 已連線。</p></div></div><div class="settings-list"><div><b>會員登入</b><span>LINE Login + LIFF</span></div><div><b>官方帳號導流</b><span>邀約頁導向加入官方帳號</span></div><div><b>點數錢包 QR</b><span>短效 Token，60 秒後失效</span></div></div></section></section>
+    </main>
+  </div>
+  <script type="module" src="/admin.js"></script>
+</body>
+</html>
