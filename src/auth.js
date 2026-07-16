@@ -53,10 +53,14 @@ export async function sha256(value) {
 
 export async function verifyLineIdToken(idToken, channelId) {
   if (!idToken || !channelId) return null;
-  const form = new FormData();
+  const form = new URLSearchParams();
   form.set('id_token', idToken);
   form.set('client_id', channelId);
-  const response = await fetch('https://api.line.me/oauth2/v2.1/verify', { method: 'POST', body: form });
+  const response = await fetch('https://api.line.me/oauth2/v2.1/verify', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: form.toString()
+  });
   if (!response.ok) return null;
   const profile = await response.json();
   return typeof profile.sub === 'string' && profile.sub ? profile : null;
