@@ -20,7 +20,7 @@ async function activeCampaign(db) {
       `
     SELECT id, name, required_creative_count, rotation_mode FROM ad_campaigns
     WHERE status = 'active' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP
-    ORDER BY starts_at DESC LIMIT 1
+    ORDER BY CASE WHEN id = 'campaign_daily_template' THEN 0 ELSE 1 END, starts_at DESC LIMIT 1
   `,
     )
     .first();
