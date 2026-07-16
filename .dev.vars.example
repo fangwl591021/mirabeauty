@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development. Never commit .dev.vars.
+LINE_LOGIN_CHANNEL_ID=REPLACE_WITH_LINE_LOGIN_CHANNEL_ID
+# Public LIFF ID used by the browser. This is not a secret.
+LIFF_ID=REPLACE_WITH_LIFF_ID
+SESSION_SIGNING_SECRET=replace-with-a-long-random-secret
+# Optional comma-separated LINE Login subjects permitted to use /v1/admin routes.
+ADMIN_LINE_SUBJECTS=
+# Required only for a trusted scanner app that resolves dynamic wallet QR codes.
+WALLET_SCANNER_API_KEY=replace-with-a-separate-random-scanner-key
