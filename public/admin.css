@@ -44,6 +44,7 @@ body {
   letter-spacing: 3px;
   margin-top: 3px;
 }
+.admin-identity{display:flex;align-items:center;gap:10px;margin:-17px 8px 26px;padding:10px;border:1px solid #dcebe2;border-radius:12px;background:#f7fffa}.admin-identity img{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#dce7e1}.admin-identity strong{display:block;color:#213b5d;font-size:14px;max-width:175px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.admin-identity span{display:block;margin-top:3px;color:#718198;font-size:11px}
 .side-label {
   color: #06a84b;
   font-weight: 800;
