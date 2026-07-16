@@ -7,6 +7,7 @@ const state = {
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
+let dailyRotationTimer = null;
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
     ...options,
@@ -190,6 +191,10 @@ async function courses() {
   );
 }
 async function daily() {
+  if (dailyRotationTimer) {
+    clearInterval(dailyRotationTimer);
+    dailyRotationTimer = null;
+  }
   const r = await api("/v1/daily-ad");
   if (!r.campaign) {
     layout('<div class="card">今天沒有輪播簽到活動。</div>');
@@ -197,36 +202,49 @@ async function daily() {
   }
   state.daily = r;
   const completed = new Set(r.qualifiedCreativeIds || []);
-  const pending = r.creatives.filter((c) => !completed.has(c.id));
-  const pool = pending.length ? pending : r.creatives;
-  const creative =
-    r.campaign.rotationMode === "random"
-      ? pool[Math.floor(Math.random() * pool.length)]
-      : pool[0];
-  if (!creative) {
+  if (!r.creatives.length) {
     layout('<div class="card">此輪播活動尚未設定素材。</div>');
     return;
   }
-  const position = Math.min(
-    r.qualifiedCreativeCount + 1,
-    r.campaign.requiredCreativeCount,
-  );
-  const cardLink = creative.image_link || creative.target_url;
-  const templateButtons = (creative.buttons || [])
-    .filter((button) => button.type === "uri" && button.uri)
-    .map(
-      (button) =>
-        `<a class="btn alt link-btn" target="_blank" rel="noopener" href="${esc(button.uri)}" ${button.color ? `style="background:${esc(button.color)};color:#fff"` : ""}>${esc(button.label)}</a>`,
-    )
-    .join("");
-  const media =
-    creative.creative_type === "video"
-      ? `<video id="adMedia" controls playsinline src="${esc(creative.media_url)}"></video>`
-      : `<img id="adMedia" src="${esc(creative.media_url)}" alt="${esc(creative.title)}">`;
+  const cards = [...r.creatives];
+  if (r.campaign.rotationMode === "random") {
+    for (let index = cards.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [cards[index], cards[swap]] = [cards[swap], cards[index]];
+    }
+  }
+  const cardHtml = (creative, index) => {
+    const ratio = String(creative.image_aspect_ratio || "400:600").replace(":", " / ");
+    const mode = creative.image_aspect_mode === "fit" ? "contain" : "cover";
+    const cardLink = creative.image_link || creative.target_url;
+    const media = `<div class="daily-media-frame" style="aspect-ratio:${esc(ratio)}"><${creative.creative_type === "video" ? "video controls playsinline" : "img"} class="daily-media" ${creative.creative_type === "video" ? "" : `alt="${esc(creative.title || `第 ${index + 1} 頁`)}"`} src="${esc(creative.media_url)}" style="object-fit:${mode}"></${creative.creative_type === "video" ? "video" : "img"}></div>`;
+    const buttons = (creative.buttons || []).filter((button) => button.type === "uri" && button.uri).map((button) => `<a class="btn alt link-btn" target="_blank" rel="noopener" href="${esc(button.uri)}" ${button.color ? `style="background:${esc(button.color)};color:#fff"` : ""}>${esc(button.label)}</a>`).join("");
+    return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}"><div class="daily-slide-head"><span>第 ${index + 1} 頁</span><span>${completed.has(creative.id) ? "已完成" : "待觀看"}</span></div>${cardLink ? `<a target="_blank" rel="noopener" href="${esc(cardLink)}">${media}</a>` : media}<div class="daily-slide-body"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${completed.has(creative.id) ? "已完成" : "開始觀看"}</button><p class="muted watch-status"></p>${buttons}</div></article>`;
+  };
   layout(
-    `<h2>${esc(r.campaign.name)}</h2><p class="muted">完成 ${r.campaign.requiredCreativeCount} 項素材觀看後，即可每日簽到。</p><div class="carousel-progress">${r.creatives.map((c) => `<span class="${completed.has(c.id) ? "done" : ""}"></span>`).join("")}</div><div class="card ad carousel"><div class="content"><span class="muted">第 ${position} 項任務｜${r.campaign.rotationMode === "random" ? "隨機輪動" : "順序輪動"}</span><h3>${esc(creative.title || "今日輪播內容")}</h3></div>${cardLink ? `<a target="_blank" rel="noopener" href="${esc(cardLink)}">${media}</a>` : media}<div class="content"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><button class="btn" id="startWatch">開始觀看</button><p id="watchStatus" class="muted"></p>${templateButtons}</div></div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`,
+    `<h2>${esc(r.campaign.name)}</h2><p class="muted">向左滑動輪播卡；完成 ${r.campaign.requiredCreativeCount} 項觀看後，即可每日簽到。</p><div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`,
   );
-  $("#startWatch").onclick = () => watchCreative(creative);
+  document.querySelectorAll("[data-watch]").forEach((button) => {
+    button.onclick = () => {
+      const creative = r.creatives.find((item) => item.id === button.dataset.watch);
+      if (creative) watchCreative(creative, button.closest(".daily-slide"));
+    };
+  });
+  const carousel = document.querySelector(".daily-carousel");
+  if (carousel && cards.length > 1) {
+    let pausedUntil = 0;
+    carousel.addEventListener("pointerdown", () => { pausedUntil = Date.now() + 9000; });
+    carousel.addEventListener("scroll", () => { if (carousel.matches(":hover")) pausedUntil = Date.now() + 5000; }, { passive: true });
+    dailyRotationTimer = setInterval(() => {
+      if (document.visibilityState !== "visible" || Date.now() < pausedUntil) return;
+      const next = carousel.scrollLeft + carousel.clientWidth * 0.86;
+      if (next >= carousel.scrollWidth - carousel.clientWidth - 8) {
+        carousel.scrollTo({ left: 0, behavior: "smooth" });
+      } else {
+        carousel.scrollTo({ left: next, behavior: "smooth" });
+      }
+    }, 4000);
+  }
   $("#checkin").onclick = async () => {
     try {
       const x = await api("/v1/daily-ad/check-in", {
@@ -240,10 +258,10 @@ async function daily() {
     }
   };
 }
-async function watchCreative(creative) {
-  const button = $("#startWatch");
+async function watchCreative(creative, card) {
+  const button = card?.querySelector(".watch-button");
   button.disabled = true;
-  const status = $("#watchStatus");
+  const status = card?.querySelector(".watch-status");
   try {
     const s = await api("/v1/daily-ad/view-sessions", {
       method: "POST",
@@ -255,7 +273,7 @@ async function watchCreative(creative) {
     const timer = setInterval(async () => {
       if (settled) return;
       const seconds = Math.floor((Date.now() - started) / 1000);
-      const media = $("#adMedia");
+      const media = card?.querySelector(".daily-media");
       const ratio =
         creative.creative_type === "video" && media?.duration
           ? Math.min(1, media.currentTime / media.duration)
@@ -288,7 +306,7 @@ async function watchCreative(creative) {
       }
     }, 1000);
     if (creative.creative_type === "video")
-      $("#adMedia")
+      card?.querySelector(".daily-media")
         ?.play()
         .catch(() => {});
     setTimeout(() => clearInterval(timer), 600000);
