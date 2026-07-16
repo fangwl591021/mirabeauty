@@ -65,3 +65,15 @@ export async function verifyLineIdToken(idToken, channelId) {
   const profile = await response.json();
   return typeof profile.sub === 'string' && profile.sub ? profile : null;
 }
+
+export async function verifyLineAccessToken(accessToken) {
+  if (!accessToken) return null;
+  const response = await fetch('https://api.line.me/v2/profile', {
+    headers: { authorization: `Bearer ${accessToken}` }
+  });
+  if (!response.ok) return null;
+  const profile = await response.json();
+  return typeof profile.userId === 'string' && profile.userId
+    ? { sub: profile.userId, name: profile.displayName || '', picture: profile.pictureUrl || '' }
+    : null;
+}
