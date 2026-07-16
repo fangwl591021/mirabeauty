@@ -1,0 +1,13 @@
+{
+  "name": "mirabeauty-member-crm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/member-repository.js && node --check src/points.js && node --check src/courses.js && node --check src/daily-ad.js && node --check src/wallet-qr.js && node --check public/app.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.24.0"
+  }
+}
