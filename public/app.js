@@ -68,6 +68,7 @@ async function login() {
     method: "POST",
     body: JSON.stringify({
       idToken,
+      accessToken: liff.getAccessToken() || "",
       inviteToken: state.invite,
       pictureUrl: lineProfile?.pictureUrl || "",
       displayName: lineProfile?.displayName || "",
