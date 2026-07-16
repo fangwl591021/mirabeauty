@@ -1,0 +1,134 @@
+import { sha256 } from './auth.js';
+import { newId } from './member-repository.js';
+import { awardPoints } from './points.js';
+
+function isWithinWindow(now, opensAt, closesAt) {
+  const opens = Date.parse(opensAt);
+  const closes = Date.parse(closesAt);
+  return Number.isFinite(opens) && Number.isFinite(closes) && now >= opens && now <= closes;
+}
+
+function publicSession(row) {
+  return {
+    sessionId: row.session_id,
+    courseId: row.course_id,
+    courseTitle: row.course_title,
+    courseDescription: row.course_description,
+    coverUrl: row.cover_url,
+    title: row.session_title,
+    mode: row.attendance_mode,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    venueName: row.venue_name,
+    venueAddress: row.venue_address,
+    meetingUrl: row.meeting_url,
+    checkinOpensAt: row.checkin_opens_at,
+    checkinClosesAt: row.checkin_closes_at
+  };
+}
+
+export async function listPublicCourseSessions(db) {
+  const result = await db.prepare(`
+    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+      cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
+      cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
+    FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    WHERE c.status = 'published' AND cs.status = 'scheduled'
+    ORDER BY cs.starts_at ASC
+  `).all();
+  return (result.results || []).map(publicSession);
+}
+
+export async function listMyCourseSessions(db, userId) {
+  const result = await db.prepare(`
+    SELECT cr.status AS registration_status, ar.status AS attendance_status,
+      cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+      cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
+      cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
+    FROM course_registrations cr
+    JOIN course_sessions cs ON cs.id = cr.course_session_id
+    JOIN courses c ON c.id = cs.course_id
+    LEFT JOIN attendance_records ar ON ar.course_session_id = cr.course_session_id AND ar.platform_user_id = cr.platform_user_id
+    WHERE cr.platform_user_id = ?
+    ORDER BY cs.starts_at DESC
+  `).bind(userId).all();
+  return (result.results || []).map(row => ({ ...publicSession(row), registrationStatus: row.registration_status, attendanceStatus: row.attendance_status || '' }));
+}
+
+export async function registerForSession(db, userId, sessionId) {
+  const session = await db.prepare(`
+    SELECT cs.id, cs.status, c.status AS course_status
+    FROM course_sessions cs JOIN courses c ON c.id = cs.course_id WHERE cs.id = ?
+  `).bind(sessionId).first();
+  if (!session || session.course_status !== 'published' || session.status !== 'scheduled') return { ok: false, reason: 'session_unavailable' };
+  const registrationId = newId('registration');
+  try {
+    await db.prepare('INSERT INTO course_registrations (id, course_session_id, platform_user_id) VALUES (?, ?, ?)')
+      .bind(registrationId, sessionId, userId).run();
+  } catch (error) {
+    if (String(error.message || '').includes('UNIQUE constraint failed: course_registrations.course_session_id, course_registrations.platform_user_id')) {
+      return { ok: true, duplicate: true };
+    }
+    throw error;
+  }
+  const pointResult = await awardPoints(db, {
+    userId,
+    eventType: 'course_registered',
+    eventReference: sessionId,
+    idempotencyKey: `course_registered:${sessionId}:${userId}`,
+    metadata: { registrationId }
+  });
+  return { ok: true, duplicate: false, registrationId, pointResult };
+}
+
+async function recordAttempt(db, { sessionId, userId, method, result, reasonCode }) {
+  await db.prepare(`
+    INSERT INTO attendance_attempts (id, course_session_id, platform_user_id, method, result, reason_code)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).bind(newId('attendance_attempt'), sessionId, userId, method, result, reasonCode).run();
+}
+
+export async function checkInToSession(db, { userId, sessionId, method, code, now = Date.now() }) {
+  const normalizedMethod = String(method || '').trim();
+  if (!['physical_qr', 'physical_code', 'online_keyword'].includes(normalizedMethod)) return { ok: false, reason: 'invalid_method' };
+  const row = await db.prepare(`
+    SELECT cs.id, cs.attendance_mode, cs.status, cs.checkin_opens_at, cs.checkin_closes_at, cs.checkin_code_hash,
+      c.status AS course_status, cr.id AS registration_id, cr.status AS registration_status
+    FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    LEFT JOIN course_registrations cr ON cr.course_session_id = cs.id AND cr.platform_user_id = ?
+    WHERE cs.id = ?
+  `).bind(userId, sessionId).first();
+  const reject = async reason => {
+    if (row) await recordAttempt(db, { sessionId, userId, method: normalizedMethod, result: 'rejected', reasonCode: reason });
+    return { ok: false, reason };
+  };
+  if (!row || row.course_status !== 'published' || row.status !== 'scheduled') return reject('session_unavailable');
+  if (row.registration_status !== 'registered') return reject('registration_required');
+  if (row.attendance_mode === 'physical' && !normalizedMethod.startsWith('physical_')) return reject('method_not_allowed');
+  if (row.attendance_mode === 'online' && normalizedMethod !== 'online_keyword') return reject('method_not_allowed');
+  if (!isWithinWindow(now, row.checkin_opens_at, row.checkin_closes_at)) return reject('outside_checkin_window');
+  if (!code || !row.checkin_code_hash || await sha256(String(code).trim()) !== row.checkin_code_hash) return reject('invalid_checkin_code');
+
+  const attendanceId = newId('attendance');
+  try {
+    await db.batch([
+      db.prepare(`INSERT INTO attendance_records (id, course_session_id, platform_user_id, registration_id, method) VALUES (?, ?, ?, ?, ?)`)
+        .bind(attendanceId, sessionId, userId, row.registration_id, normalizedMethod),
+      db.prepare(`INSERT INTO attendance_attempts (id, course_session_id, platform_user_id, method, result) VALUES (?, ?, ?, ?, 'accepted')`)
+        .bind(newId('attendance_attempt'), sessionId, userId, normalizedMethod)
+    ]);
+  } catch (error) {
+    if (String(error.message || '').includes('UNIQUE constraint failed: attendance_records.course_session_id, attendance_records.platform_user_id')) {
+      return { ok: true, duplicate: true };
+    }
+    throw error;
+  }
+  const pointResult = await awardPoints(db, {
+    userId,
+    eventType: 'attendance_verified',
+    eventReference: sessionId,
+    idempotencyKey: `attendance_verified:${sessionId}:${userId}`,
+    metadata: { attendanceId, method: normalizedMethod }
+  });
+  return { ok: true, duplicate: false, attendanceId, pointResult };
+}
