@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mirabeauty",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-16",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*"]
+  },
+  "vars": {
+    "LIFF_ID": "2010723037-R2QVRIJ8",
+    "LINE_LOGIN_CHANNEL_ID": "2010723037"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mirabeauty_member_crm",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
