@@ -9,7 +9,7 @@
     "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*"]
   },
   "vars": {
-    "LIFF_ID": "2010723037-R2QVRIJ8",
+    "LIFF_ID": "2010723037-HnKrhEXb",
     "LINE_LOGIN_CHANNEL_ID": "2010723037"
   },
   "d1_databases": [
