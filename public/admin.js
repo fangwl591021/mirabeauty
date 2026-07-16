@@ -21,6 +21,16 @@ const showStatus = (message, type = "ok") => {
 };
 const format = (value) =>
   new Intl.NumberFormat("zh-TW").format(Number(value) || 0);
+async function loadAdminIdentity() {
+  try {
+    const { member } = await api("/v1/me");
+    $("#adminName").textContent = member.displayName || "LINE 管理員";
+    const avatar = $("#adminAvatar");
+    if (member.pictureUrl) avatar.src = member.pictureUrl;
+    else avatar.style.display = "none";
+    $("#adminIdentity").hidden = false;
+  } catch { /* overview will show the existing authorization error */ }
+}
 async function overview() {
   try {
     const data = await api("/v1/admin/overview");
@@ -138,6 +148,7 @@ $("#creativeForm")?.addEventListener("submit", (event) =>
   })),
 );
 overview();
+loadAdminIdentity();
 
 // Exact port of the MLM checkin-template editor; only its storage endpoint is MiraBeauty.
 let checkinTemplateDraft = null;
