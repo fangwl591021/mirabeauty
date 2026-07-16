@@ -32,6 +32,10 @@ export async function getDailyAdCampaign(db, userId) {
     SELECT COUNT(*) AS count FROM daily_ad_view_events
     WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND qualified_at IS NOT NULL
   `).bind(userId, campaign.id, date).first();
+  const completedCreatives = await db.prepare(`
+    SELECT creative_id FROM daily_ad_view_events
+    WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND qualified_at IS NOT NULL
+  `).bind(userId, campaign.id, date).all();
   const checkin = await db.prepare(`
     SELECT id FROM daily_checkins WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND status = 'verified'
   `).bind(userId, campaign.id, date).first();
@@ -40,6 +44,7 @@ export async function getDailyAdCampaign(db, userId) {
     creatives: creativeResult.results || [],
     businessDate: date,
     qualifiedCreativeCount: Number(completed?.count || 0),
+    qualifiedCreativeIds: (completedCreatives.results || []).map(row => row.creative_id),
     checkedIn: Boolean(checkin)
   };
 }
