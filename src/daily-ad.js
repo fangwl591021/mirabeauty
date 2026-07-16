@@ -7,6 +7,13 @@ function businessDate(now = new Date()) {
   return taipei.toISOString().slice(0, 10);
 }
 
+function normalizeTemplateImageUrl(value) {
+  return String(value || "").replace(
+    "/assets/checkin-template/",
+    "/v1/checkin-template/images/",
+  );
+}
+
 function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join(
@@ -79,6 +86,8 @@ export async function getDailyAdCampaign(db, userId) {
       } catch {}
       return {
         ...creative,
+        media_url: normalizeTemplateImageUrl(creative.media_url),
+        image_link: normalizeTemplateImageUrl(creative.image_link),
         buttons: Array.isArray(buttons) ? buttons.slice(0, 4) : [],
       };
     }),
