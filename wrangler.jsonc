@@ -16,7 +16,7 @@
     {
       "binding": "DB",
       "database_name": "mirabeauty_member_crm",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "ba4aa1c1-c006-4a52-9df7-1b46ec100c27",
       "migrations_dir": "migrations"
     }
   ]
