@@ -1,6 +1,7 @@
 import {
   createSession,
   sha256,
+  verifyLineAccessToken,
   verifyLineIdToken,
   verifySession,
 } from "./auth.js";
@@ -107,11 +108,12 @@ async function app(request, env) {
     if (!env.DB || !env.LINE_LOGIN_CHANNEL_ID || !env.SESSION_SIGNING_SECRET)
       return json({ success: false, error: "Service is not configured" }, 503);
     const body = await readJson(request);
-    if (!body?.idToken) return badRequest("idToken is required");
-    const lineProfile = await verifyLineIdToken(
+    if (!body?.idToken && !body?.accessToken)
+      return badRequest("LINE token is required");
+    const lineProfile = (await verifyLineIdToken(
       body.idToken,
       env.LINE_LOGIN_CHANNEL_ID,
-    );
+    )) || await verifyLineAccessToken(body.accessToken);
     if (!lineProfile)
       return json({ success: false, error: "Invalid LINE ID token" }, 401);
     const result = await resolveLineMember(env.DB, {
