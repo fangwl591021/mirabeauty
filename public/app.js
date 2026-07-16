@@ -63,9 +63,15 @@ async function login() {
     return;
   }
   const idToken = liff.getIDToken();
+  const lineProfile = await liff.getProfile().catch(() => null);
   const r = await api("/v1/auth/line/verify", {
     method: "POST",
-    body: JSON.stringify({ idToken, inviteToken: state.invite }),
+    body: JSON.stringify({
+      idToken,
+      inviteToken: state.invite,
+      pictureUrl: lineProfile?.pictureUrl || "",
+      displayName: lineProfile?.displayName || "",
+    }),
   });
   state.token = r.sessionToken;
   localStorage.setItem("mirabeauty_session", state.token);
