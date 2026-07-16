@@ -26,8 +26,10 @@ async function loadAdminIdentity() {
     const { member } = await api("/v1/me");
     $("#adminName").textContent = member.displayName || "LINE 管理員";
     const avatar = $("#adminAvatar");
-    if (member.pictureUrl) avatar.src = member.pictureUrl;
-    else avatar.style.display = "none";
+    if (member.pictureUrl) {
+      avatar.src = member.pictureUrl;
+      avatar.onerror = () => { avatar.style.display = "none"; };
+    } else avatar.style.display = "none";
     $("#adminIdentity").hidden = false;
   } catch { /* overview will show the existing authorization error */ }
 }
