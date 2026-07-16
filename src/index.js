@@ -114,11 +114,11 @@ async function app(request, env) {
     );
     if (!lineProfile)
       return json({ success: false, error: "Invalid LINE ID token" }, 401);
-    const result = await resolveLineMember(
-      env.DB,
-      lineProfile,
-      body.inviteToken,
-    );
+    const result = await resolveLineMember(env.DB, {
+      ...lineProfile,
+      picture: String(body.pictureUrl || lineProfile.picture || ""),
+      name: String(body.displayName || lineProfile.name || ""),
+    }, body.inviteToken);
     if (result.member.status !== "active")
       return json({ success: false, error: "Member is unavailable" }, 403);
     const sessionToken = await createSession(
