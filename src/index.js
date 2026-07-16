@@ -112,12 +112,14 @@ async function app(request, env) {
     const admin = await currentAdmin(request, env);
     if (!admin) return json({ success: false, error: 'Administrator access required' }, 403);
     if (request.method === 'GET' && url.pathname === '/v1/admin/overview') {
-      const [members, courses, campaigns] = await env.DB.batch([
+      const [members, courses, campaigns, points, checkins] = await env.DB.batch([
         env.DB.prepare('SELECT COUNT(*) AS count FROM platform_users WHERE status = \'active\''),
         env.DB.prepare('SELECT COUNT(*) AS count FROM courses WHERE status = \'published\''),
-        env.DB.prepare('SELECT COUNT(*) AS count FROM ad_campaigns WHERE status = \'active\'')
+        env.DB.prepare('SELECT COUNT(*) AS count FROM ad_campaigns WHERE status = \'active\''),
+        env.DB.prepare('SELECT COALESCE(SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END), 0) AS count FROM point_ledger_entries'),
+        env.DB.prepare('SELECT COUNT(*) AS count FROM daily_checkins WHERE status = \'verified\'')
       ]);
-      return json({ success: true, overview: { members: Number(members.results[0].count), publishedCourses: Number(courses.results[0].count), activeCampaigns: Number(campaigns.results[0].count) } });
+      return json({ success: true, overview: { members: Number(members.results[0].count), publishedCourses: Number(courses.results[0].count), activeCampaigns: Number(campaigns.results[0].count), issuedPoints: Number(points.results[0].count), verifiedCheckins: Number(checkins.results[0].count) } });
     }
     const body = await readJson(request) || {};
     if (request.method === 'POST' && url.pathname === '/v1/admin/point-rules') {
