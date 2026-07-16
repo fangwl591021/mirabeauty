@@ -82,6 +82,11 @@ function randomInviteToken() {
 
 async function app(request, env) {
   const url = new URL(request.url);
+  const templateImage = url.pathname.match(/^\/assets\/checkin-template\/([^/]+)$/);
+  if (request.method === "GET" && templateImage) {
+    const row = await env.DB.prepare("SELECT content_type, bytes FROM checkin_template_images WHERE id = ?").bind(templateImage[1]).first();
+    return row ? new Response(row.bytes, { headers: { "content-type": row.content_type, "cache-control": "public, max-age=31536000, immutable" } }) : new Response("Not found", { status: 404 });
+  }
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       success: true,
@@ -236,6 +241,42 @@ async function app(request, env) {
           verifiedCheckins: Number(checkins.results[0].count),
         },
       });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/checkin-template") {
+      const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first();
+      let template = null;
+      try { template = row?.value ? JSON.parse(row.value) : null; } catch { template = null; }
+      return json({ success: true, template });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template") {
+      const template = (await readJson(request)) || {};
+      const pages = Array.isArray(template.pages) ? template.pages.slice(0, 12) : [];
+      if (!pages.length) return badRequest("At least one template page is required");
+      const safe = {
+        active: template.active !== false,
+        keywords: (Array.isArray(template.keywords) ? template.keywords : []).map((item) => String(item || "").trim()).filter(Boolean).slice(0, 20),
+        altText: String(template.altText || "簽到贈點活動").slice(0, 300),
+        rotationMode: template.rotationMode === "sequential" ? "sequential" : "random",
+        pages: pages.map((page) => ({
+          imageUrl: String(page.imageUrl || "").slice(0, 4096), imageLink: String(page.imageLink || "").slice(0, 4096),
+          bubbleSize: ["nano","micro","deca","hecto","kilo","mega","giga"].includes(page.bubbleSize) ? page.bubbleSize : "nano",
+          imageAspectRatio: /^\d{1,4}:\d{1,4}$/.test(String(page.imageAspectRatio || "")) ? page.imageAspectRatio : "400:600",
+          imageAspectMode: page.imageAspectMode === "fit" ? "fit" : "cover",
+          buttons: (Array.isArray(page.buttons) ? page.buttons : []).slice(0, 4).map((button) => ({ label: String(button.label || "").slice(0, 80), type: button.type === "uri" ? "uri" : "message", text: String(button.text || "").slice(0, 300), uri: String(button.uri || "").slice(0, 4096), color: /^#[0-9a-f]{6}$/i.test(String(button.color || "")) ? String(button.color) : "" })),
+        })),
+      };
+      await env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(safe)).run();
+      return json({ success: true, template: safe });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template/upload-image") {
+      const form = await request.formData();
+      const file = form.get("image");
+      if (!(file instanceof File)) return badRequest("Image file is required");
+      if (file.size > 1024 * 1024) return badRequest("Image must be 1MB or smaller");
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) return badRequest("Only JPEG, PNG, WebP or GIF is allowed");
+      const id = newId("template_image");
+      await env.DB.prepare("INSERT INTO checkin_template_images (id, content_type, bytes) VALUES (?, ?, ?)").bind(id, file.type, await file.arrayBuffer()).run();
+      return json({ success: true, url: `${url.origin}/assets/checkin-template/${id}`, size: file.size }, 201);
     }
     const body = (await readJson(request)) || {};
     if (request.method === "POST" && url.pathname === "/v1/admin/point-rules") {
