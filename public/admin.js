@@ -71,6 +71,7 @@ function switchPage(page) {
   $("#pageTitle").textContent = names[page][0];
   $("#pageHint").textContent = names[page][1];
   if (page === "carousel") loadCheckinTemplate();
+  if (page === "points") loadPointRules();
 }
 const localIso = (value) => (value ? new Date(value).toISOString() : "");
 async function submitForm(event, endpoint, body) {
@@ -104,9 +105,43 @@ $("#ruleForm").addEventListener("submit", (event) =>
   submitForm(event, "/v1/admin/point-rules", () => ({
     eventType: $("#ruleEvent").value.trim(),
     points: Number($("#rulePoints").value),
+    awardFrequency: $("#ruleFrequency").value,
     status: $("#ruleStatus").value,
-  })),
+  })).then(() => loadPointRules()),
 );
+const ruleFrequencyLabel = { once:"僅一次", daily:"每日一次", per_completion:"完成給一次" };
+async function loadPointRules() {
+  const container = $("#ruleList");
+  if (!container) return;
+  try {
+    const data = await api("/v1/admin/point-rules");
+    const fixedOnce = new Set(["member_joined", "registration_completed"]);
+    container.innerHTML = data.rules.length ? data.rules.map((rule) => {
+      const fixed = fixedOnce.has(rule.event_type);
+      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event">${rule.event_type}</div><label>點數<input data-rule-field="points" type="number" min="0" value="${Number(rule.points)}"></label><label>發點頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${fixed && key !== "once" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
+    }).join("") : '<p class="muted">尚未建立點數規則。</p>';
+  } catch (error) {
+    container.innerHTML = `<p class="danger">${error.message}</p>`;
+  }
+}
+$("#ruleList").addEventListener("submit", async (event) => {
+  const form = event.target.closest(".rule-row");
+  if (!form) return;
+  event.preventDefault();
+  try {
+    await api(`/v1/admin/point-rules/${form.dataset.ruleId}`, {
+      eventType: form.querySelector(".rule-event").textContent.trim(),
+      points: Number(form.querySelector('[data-rule-field="points"]').value),
+      awardFrequency: form.querySelector('[data-rule-field="frequency"]').value,
+      status: form.querySelector('[data-rule-field="status"]').value,
+    });
+    showStatus("點數規則已儲存");
+    loadPointRules();
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+});
+$("#refreshRules").addEventListener("click", loadPointRules);
 $("#courseForm").addEventListener("submit", (event) =>
   submitForm(event, "/v1/admin/courses", () => ({
     title: $("#courseTitle").value.trim(),
