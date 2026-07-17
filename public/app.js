@@ -36,7 +36,8 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const memberHeader = state.tab === "home" ? "" : `<header class="hero member-hero">${avatar()}<div><h1>MiraBeauty 會員中心</h1><p>${esc(state.member?.displayName || "LINE 會員")}，歡迎回來</p></div></header>`;
+  const dailyHeader = `<header class="hero member-hero daily-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(state.daily?.campaign?.name || "簽到贈點活動")}</h1><p>向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。</p></div></header>`;
+  const memberHeader = state.tab === "home" ? "" : state.tab === "daily" ? dailyHeader : `<header class="hero member-hero">${avatar()}<div><h1>MiraBeauty 會員中心</h1><p>${esc(state.member?.displayName || "LINE 會員")}，歡迎回來</p></div></header>`;
   $("#app").innerHTML =
     `${memberHeader}<div class="content">${body}</div><nav class="nav">${[
       ["home", "首頁"],
@@ -226,7 +227,7 @@ async function daily() {
     return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}"><div class="daily-slide-head"><span>第 ${index + 1} 頁</span><span>${completed.has(creative.id) ? "已完成" : "待觀看"}</span></div>${cardLink ? `<a target="_blank" rel="noopener" href="${esc(cardLink)}">${media}</a>` : media}<div class="daily-slide-body"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${completed.has(creative.id) ? "已完成" : "開始觀看"}</button><p class="muted watch-status"></p>${buttons}</div></article>`;
   };
   layout(
-    `<h2>${esc(r.campaign.name)}</h2><p class="muted">向左滑動輪播卡；完成 ${r.campaign.requiredCreativeCount} 項觀看後，即可每日簽到。</p><div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`,
+    `<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`,
   );
   document.querySelectorAll("[data-watch]").forEach((button) => {
     button.onclick = () => {
