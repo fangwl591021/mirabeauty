@@ -40,6 +40,7 @@ const state = {
   smartCheckin: smartCheckinFromLocation() || sessionStorage.getItem("mirabeauty_smart_checkin") === "1",
   publicCard: publicCardFromLocation(),
   courseView: "catalog",
+  cardVersion: "",
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
@@ -451,28 +452,61 @@ function cardActionItems(card) {
   const seen = new Set();
   return actions.filter((item) => item.label && item.value && !seen.has(`${item.label}:${item.value}`) && (seen.add(`${item.label}:${item.value}`), true));
 }
+const cardVersionMeta = {
+  standard: { label:"標準", aspect:"20:13", className:"standard" },
+  full: { label:"滿版", aspect:"2:3", className:"full" },
+  square: { label:"正方", aspect:"1:1", className:"square" },
+};
+function activeCardVersion(card) {
+  const id = card.selectedVersion && cardVersionMeta[card.selectedVersion] ? card.selectedVersion : "standard";
+  return { id, ...(card.versions?.[id] || {}), ...(cardVersionMeta[id] || cardVersionMeta.standard) };
+}
+function cardWithVersion(card, id) {
+  const version = { ...(card.versions?.[id] || {}), ...(cardVersionMeta[id] || cardVersionMeta.standard) };
+  return { ...card, selectedVersion:id, coverUrl:version.coverUrl || "", buttons:version.buttons || [], serviceDescription:version.description || card.serviceDescription, versionTitle:version.title || card.displayName, version };
+}
 function cardFlex(card) {
   const action = (label, uri, color = "#B96072") => ({ type:"button", style:"primary", height:"sm", color, action:{ type:"uri", label:String(label).slice(0,20), uri } });
+  const version = activeCardVersion(card);
   const fields = [
     card.companyName,
     [card.jobTitle, card.department].filter(Boolean).join("｜"),
     card.serviceDescription,
   ].filter(Boolean).join("\n");
   const bodyContents = [
-    { type:"text", text:card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", wrap:true },
+    { type:"text", text:card.versionTitle || card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", wrap:true },
     ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm" }] : []),
     ...(fields ? [{ type:"text", text:fields, size:"sm", color:"#5E5260", wrap:true, margin:"md", maxLines:4 }] : []),
   ];
   const actions = cardActionItems(card).slice(0, 2);
   return {
-    type:"bubble", size:"mega",
-    ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:"20:13", aspectMode:"cover" } } : {}),
+    type:"bubble", size:version.id === "full" ? "giga" : "mega",
+    ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:version.aspect, aspectMode:"cover" } } : {}),
     body:{ type:"box", layout:"vertical", paddingAll:"18px", contents:bodyContents },
     footer:{ type:"box", layout:"vertical", spacing:"sm", contents:[
       action("查看名片", cardPublicUrl(card.id)),
       ...actions.map((item) => action(item.label, item.value, "#8D6A54")),
     ] },
   };
+}
+async function compressCardImage(file) {
+  if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
+  const source = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(source.width, source.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(source.width * scale)); canvas.height = Math.max(1, Math.round(source.height * scale));
+  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height); source.close?.();
+  for (const quality of [0.86,0.76,0.66,0.56]) {
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+    if (blob && blob.size <= 900 * 1024) return new File([blob], "card-cover.webp", { type:"image/webp" });
+  }
+  throw new Error("圖片無法壓縮至 900KB，請選擇較小的圖片");
+}
+async function uploadCardImage(file) {
+  const compressed = await compressCardImage(file);
+  const form = new FormData(); form.append("image", compressed);
+  const response = await fetch("/v1/cards/me/media", { method:"POST", headers:state.token ? { authorization:`Bearer ${state.token}` } : {}, body:form });
+  const body = await response.json(); if (!response.ok) throw new Error(body.error || "圖片上傳失敗"); return body.url;
 }
 async function prepareCardLiff() {
   if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
@@ -547,7 +581,23 @@ async function card() {
   let panel = "";
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(myCard)}<div class="business-card-contact-actions">${cardActionItems(myCard).map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
   if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
-  if (view === "digital") panel = `<section class="business-card-digital">${myCard.coverUrl ? `<img class="business-card-cover" src="${esc(myCard.coverUrl)}" alt="${esc(myCard.displayName)} 的名片封面">` : `<div class="business-card-cover placeholder">${avatar()}</div>`}<h3>${esc(myCard.displayName)}</h3><p class="muted">公開名片網址</p><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(myCard.id))}"><div id="cardPublicQr" class="qr"></div><div class="business-card-share-actions"><button class="btn" id="sharePersonalCard">分享名片</button><button class="btn alt" id="sendPersonalCard">傳送至目前聊天室</button></div><button class="mini-btn" id="copyCardUrl">複製名片網址</button><p class="muted small">分享名片可選擇好友或群組；直接傳送需由 LINE 聊天室內開啟本 LIFF。</p></section>`;
+  if (view === "digital") {
+    const selected = state.cardVersion && cardVersionMeta[state.cardVersion]
+      ? { id:state.cardVersion, ...(myCard.versions?.[state.cardVersion] || {}), ...cardVersionMeta[state.cardVersion] }
+      : activeCardVersion(myCard);
+    const version = cardWithVersion(myCard, selected.id);
+    panel = `<section class="business-card-digital full-ecard">
+      <div class="ecard-layout-selector">${Object.entries(cardVersionMeta).map(([id, meta]) => `<button class="${id === selected.id ? "active" : ""}" data-card-version="${id}">${meta.label}</button>`).join("")}</div>
+      <div class="ecard-editor-grid"><div class="ecard-settings">
+        <label>封面圖片<input id="cardVersionCover" placeholder="https://" value="${esc(version.coverUrl)}"></label>
+        <div class="ecard-upload-row"><input id="cardVersionFile" type="file" accept="image/*"><button class="mini-btn" type="button" id="uploadCardVersionImage">上傳</button></div>
+        <label>版面標題<input id="cardVersionTitle" value="${esc(version.versionTitle || "")}" placeholder="預設使用姓名"></label>
+        <label>版面說明<textarea id="cardVersionDescription" rows="4" placeholder="預設使用服務項目">${esc(version.serviceDescription || "")}</textarea></label>
+        <div class="card-buttons-setting"><div class="row"><strong>底部按鈕設定</strong><button type="button" class="mini-btn" id="addVersionButton">新增按鈕</button></div><div id="cardButtonRows">${(version.buttons || []).map(customButtonEditor).join("")}</div></div>
+        <button class="btn" type="button" id="saveDigitalCard">儲存名片設定</button>
+      </div><div class="ecard-live-preview"><p>即時預覽</p><div class="ecard-preview-card ${esc(selected.className)}">${version.coverUrl ? `<img src="${esc(version.coverUrl)}" alt="名片封面">` : `<div class="ecard-cover-placeholder">${avatar()}</div>`}<div class="ecard-preview-copy"><strong>${esc(version.versionTitle || myCard.displayName)}</strong><span>${esc(version.serviceDescription || myCard.serviceDescription || "MiraBeauty 數位名片")}</span></div>${(version.buttons || []).length ? `<div class="ecard-preview-buttons">${(version.buttons || []).slice(0,4).map((button)=>`<span style="--button-color:${esc(button.color || "#b96072")}">${esc(button.label)}</span>`).join("")}</div>` : ""}</div></div></div>
+      <div class="ecard-share-panel"><p>公開名片網址</p><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(myCard.id))}"><div id="cardPublicQr" class="qr"></div><div class="business-card-share-actions"><button class="btn" id="sharePersonalCard">分享名片</button><button class="btn alt" id="sendPersonalCard">傳送至目前聊天室</button></div><button class="mini-btn" id="copyCardUrl">複製名片網址</button></div></section>`;
+  }
   layout(`<section class="business-card"><div class="business-card-title"><button class="back-card" data-home-action="home" aria-label="返回首頁">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
   document.querySelectorAll("[data-card-tab]").forEach((button) => button.onclick = () => { state.cardView = button.dataset.cardTab; card(); });
   bindPortalActions();
@@ -559,7 +609,7 @@ async function card() {
         jobTitle: $("#cardJobTitle").value, department: $("#cardDepartment").value, mobile: $("#cardMobile").value,
         companyPhone: $("#cardCompanyPhone").value, email: $("#cardEmail").value, websiteUrl: $("#cardWebsiteUrl").value,
         lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value,
-        coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), status:"published"
+        coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), versions:myCard.versions, selectedVersion:myCard.selectedVersion, status:"published"
       }) });
       state.cardView = "contact"; alert("名片已儲存"); await card();
     } catch (error) { alert(error.message); } };
@@ -569,6 +619,11 @@ async function card() {
     $("#copyCardUrl").onclick = async () => { await navigator.clipboard.writeText(cardPublicUrl(myCard.id)); alert("名片網址已複製"); };
     $("#sharePersonalCard").onclick = () => sharePersonalCard(myCard).catch((error) => alert(error.message));
     $("#sendPersonalCard").onclick = () => sendPersonalCardToChat(myCard).catch((error) => alert(error.message));
+    document.querySelectorAll("[data-card-version]").forEach((button) => button.onclick = () => { state.cardVersion = button.dataset.cardVersion; state.cardView = "digital"; card(); });
+    bindCardButtonEditor();
+    $("#addVersionButton")?.addEventListener("click", () => { const holder = $("#cardButtonRows"); if (holder && holder.querySelectorAll("[data-card-button-row]").length < 4) { holder.insertAdjacentHTML("beforeend", customButtonEditor()); bindCardButtonEditor(); } });
+    $("#uploadCardVersionImage").onclick = async () => { try { const file = $("#cardVersionFile").files?.[0]; if (!file) throw new Error("請先選擇圖片"); const button = $("#uploadCardVersionImage"); button.disabled=true; button.textContent="上傳中"; const imageUrl = await uploadCardImage(file); $("#cardVersionCover").value=imageUrl; alert("圖片已上傳，請按儲存名片設定"); } catch(e) { alert(e.message); } finally { const button=$("#uploadCardVersionImage"); button.disabled=false; button.textContent="上傳"; } };
+    $("#saveDigitalCard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#cardVersionCover").value.trim(), title:$("#cardVersionTitle").value.trim(), description:$("#cardVersionDescription").value.trim(), buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; state.cardView="digital"; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
