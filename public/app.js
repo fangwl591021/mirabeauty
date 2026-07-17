@@ -111,26 +111,26 @@ async function render() {
 async function home() {
   const wallet = await api("/v1/points/wallet");
   layout(
-    `<div class="card"><div class="muted">目前可用點數</div><div class="points">${wallet.wallet.balance}</div><button class="btn alt" id="toWallet">開啟點數錢包</button></div><div class="grid"><button class="btn" id="share">分享 QR 碼</button><button class="btn dark" id="dailyBtn">每日簽到</button></div><div class="card qr-card"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">複製邀約連結</button></div><div class="card qr-card"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><button class="btn dark" id="homeWallet">顯示點數 QR 碼</button><p id="homeWalletExpire" class="muted small"></p></div>`,
+    `<section class="member-portal"><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>點數錢包</span><strong>${format(wallet.wallet.balance)}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section><section class="portal-menu" aria-label="會員功能"><button data-home-action="profile"><i class="portal-menu-icon purple">♙</i><span>會員資料</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">▤</i><span>我的名片</span></button><button data-home-action="wallet"><i class="portal-menu-icon orange">▱</i><span>點數明細</span></button><button data-home-action="walletqr"><i class="portal-menu-icon violet">◎</i><span>錢包 QR</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">♜</i><span>簽到贈點</span></button><button data-home-action="courses"><i class="portal-menu-icon navy">▣</i><span>課程活動</span></button><button data-home-action="share"><i class="portal-menu-icon blue">▦</i><span>分享邀約</span></button><button data-home-action="profile"><i class="portal-menu-icon red">◇</i><span>我的帳戶</span></button></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">複製邀約連結</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
-  $("#toWallet").onclick = () => {
-    state.tab = "wallet";
-    render();
-  };
-  $("#dailyBtn").onclick = () => {
-    state.tab = "daily";
-    render();
-  };
-  $("#share").onclick = showShareQr;
+  document.querySelectorAll("[data-home-action]").forEach((button) => (button.onclick = async () => {
+    const action = button.dataset.homeAction;
+    if (action === "share") return showShareQr();
+    if (action === "walletqr") {
+      $("#walletPanel").classList.remove("hidden");
+      return showWalletQr("homeWalletQr", "homeWalletExpire");
+    }
+    state.tab = action === "daily" ? "daily" : action === "courses" ? "courses" : action === "profile" ? "profile" : "wallet";
+    await render();
+  }));
   $("#copyInvite").onclick = copyInvite;
-  $("#homeWallet").onclick = () =>
-    showWalletQr("homeWalletQr", "homeWalletExpire");
 }
 async function invite() {
   return api("/v1/invite-links", { method: "POST", body: "{}" });
 }
 async function showShareQr() {
   const r = await invite();
+  $("#sharePanel")?.classList.remove("hidden");
   $("#shareQr").innerHTML = "";
   new QRCode($("#shareQr"), { text: r.invite.url, width: 210, height: 210 });
   $("#shareQr").dataset.url = r.invite.url;
