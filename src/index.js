@@ -301,8 +301,8 @@ async function app(request, env) {
     if (request.method === "GET" && url.pathname === "/v1/admin/members") {
       const rows = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
-          mp.gender, mp.member_number, mp.company_member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
-          ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+          mp.gender, mp.member_number, mp.company_member_number, mp.industry, mp.birthday, mp.address, mp.admin_note, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
         LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
@@ -318,8 +318,8 @@ async function app(request, env) {
       const memberId = memberDetailMatch[1];
       const member = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
-          mp.gender, mp.member_number, mp.company_member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
-          ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+          mp.gender, mp.member_number, mp.company_member_number, mp.industry, mp.birthday, mp.address, mp.admin_note, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
         LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
@@ -335,6 +335,39 @@ async function app(request, env) {
         env.DB.prepare("SELECT mp.display_name, mp.member_number, rr.created_at FROM referral_relationships rr LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id WHERE rr.referrer_user_id = ? AND rr.status = 'active' ORDER BY rr.created_at DESC LIMIT 30").bind(memberId),
       ]);
       return json({ success: true, member, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
+    }
+    if (request.method === "PATCH" && memberDetailMatch) {
+      const memberId = memberDetailMatch[1];
+      const body = (await readJson(request)) || {};
+      const displayName = String(body.displayName || "").trim().slice(0, 120);
+      const phone = String(body.phone || "").trim().slice(0, 40);
+      const companyMemberNumber = String(body.companyMemberNumber || "").trim().slice(0, 80);
+      const gender = ["", "female", "male", "other", "prefer_not_to_say"].includes(String(body.gender || "")) ? String(body.gender || "") : "";
+      const industry = String(body.industry || "").trim().slice(0, 120);
+      const birthday = String(body.birthday || "").trim().slice(0, 10);
+      const address = String(body.address || "").trim().slice(0, 300);
+      const adminNote = String(body.adminNote || "").trim().slice(0, 3000);
+      if (!displayName || !companyMemberNumber) return badRequest("姓名與公司會員編號為必填");
+      if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) return badRequest("生日格式必須為 YYYY-MM-DD");
+      const exists = await env.DB.prepare("SELECT platform_user_id FROM member_profiles WHERE platform_user_id = ?").bind(memberId).first();
+      if (!exists) return json({ success: false, error: "Member not found" }, 404);
+      const duplicate = await env.DB.prepare("SELECT platform_user_id FROM member_profiles WHERE company_member_number = ? AND platform_user_id <> ?").bind(companyMemberNumber, memberId).first();
+      if (duplicate) return badRequest("公司會員編號已被其他會員使用");
+      const referrerUserId = String(body.referrerUserId || "").trim();
+      if (referrerUserId === memberId) return badRequest("推薦人不可為本人");
+      if (referrerUserId) {
+        const referrer = await env.DB.prepare("SELECT id FROM platform_users WHERE id = ? AND status = 'active'").bind(referrerUserId).first();
+        if (!referrer) return badRequest("找不到推薦人系統 ID");
+      }
+      try {
+        await env.DB.batch([
+          env.DB.prepare("UPDATE member_profiles SET display_name = ?, phone = ?, gender = ?, company_member_number = ?, industry = ?, birthday = ?, address = ?, admin_note = ?, updated_at = CURRENT_TIMESTAMP WHERE platform_user_id = ?").bind(displayName, phone, gender, companyMemberNumber, industry, birthday, address, adminNote, memberId),
+          referrerUserId
+            ? env.DB.prepare("INSERT INTO referral_relationships (id, referred_user_id, referrer_user_id, invite_link_id) VALUES (?, ?, ?, NULL) ON CONFLICT(referred_user_id) DO UPDATE SET referrer_user_id = excluded.referrer_user_id, invite_link_id = NULL, status = 'active', created_at = CURRENT_TIMESTAMP").bind(newId("referral"), memberId, referrerUserId)
+            : env.DB.prepare("DELETE FROM referral_relationships WHERE referred_user_id = ?").bind(memberId),
+        ]);
+        return json({ success: true });
+      } catch (error) { return badRequest(error.message || "Unable to update member"); }
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/checkin-template") {
       const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first();
