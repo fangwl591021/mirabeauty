@@ -238,7 +238,8 @@ async function daily() {
   const cardHtml = (creative, index) => {
     const ratio = String(creative.image_aspect_ratio || "400:600").replace(":", " / ");
     const mode = creative.image_aspect_mode === "fit" ? "contain" : "cover";
-    const bubbleWidths = { nano: "48vw", micro: "56vw", deca: "64vw", hecto: "72vw", kilo: "82vw", mega: "92vw", giga: "100vw" };
+    // 百分比以會員前台 620px 容器為基準；不可使用 vw，否則桌機會被整個瀏覽器寬度放大。
+    const bubbleWidths = { nano: "48%", micro: "56%", deca: "64%", hecto: "72%", kilo: "82%", mega: "92%", giga: "100%" };
     const bubbleWidth = bubbleWidths[creative.bubble_size] || bubbleWidths.nano;
     const detailLink = creative.image_link || creative.target_url;
     const media = `<div class="daily-media-frame" style="aspect-ratio:${esc(ratio)}"><${creative.creative_type === "video" ? "video controls playsinline" : "img"} class="daily-media" ${creative.creative_type === "video" ? "" : `alt="${esc(creative.title || `第 ${index + 1} 頁`)}"`} src="${esc(creative.media_url)}" style="object-fit:${mode}"></${creative.creative_type === "video" ? "video" : "img"}></div>`;
