@@ -15,10 +15,14 @@ import {
 } from "./member-repository.js";
 import { awardPoints, getWallet } from "./points.js";
 import {
+  cancelCalendarSession,
   checkInToSession,
+  listAdminCourses,
+  listCalendarSessions,
   listMyCourseSessions,
   listPublicCourseSessions,
   registerForSession,
+  saveCalendarSession,
 } from "./courses.js";
 import {
   checkInDailyAd,
@@ -330,7 +334,7 @@ async function app(request, env) {
       if (!member) return json({ success: false, error: "Member not found" }, 404);
       const [ledger, courses, checkins, referrals] = await env.DB.batch([
         env.DB.prepare("SELECT event_type, event_reference, delta, balance_after, created_at FROM point_ledger_entries WHERE platform_user_id = ? ORDER BY created_at DESC LIMIT 50").bind(memberId),
-        env.DB.prepare("SELECT cr.status, cr.registered_at, cs.title, cs.starts_at FROM course_registrations cr JOIN course_sessions cs ON cs.id = cr.course_session_id WHERE cr.platform_user_id = ? ORDER BY cr.registered_at DESC LIMIT 30").bind(memberId),
+        env.DB.prepare("SELECT cr.status, cr.source, cr.registered_at, cs.title, cs.starts_at FROM course_registrations cr JOIN course_sessions cs ON cs.id = cr.course_session_id WHERE cr.platform_user_id = ? ORDER BY cr.registered_at DESC LIMIT 30").bind(memberId),
         env.DB.prepare("SELECT business_date, checked_in_at, status FROM daily_checkins WHERE platform_user_id = ? ORDER BY business_date DESC LIMIT 30").bind(memberId),
         env.DB.prepare("SELECT mp.display_name, mp.member_number, rr.created_at FROM referral_relationships rr LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id WHERE rr.referrer_user_id = ? AND rr.status = 'active' ORDER BY rr.created_at DESC LIMIT 30").bind(memberId),
       ]);
@@ -513,6 +517,21 @@ async function app(request, env) {
         )
         .run();
       return json({ success: true, id }, 201);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/courses") {
+      return json({ success: true, courses: await listAdminCourses(env.DB) });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/calendar/events") {
+      return json({ success: true, events: await listCalendarSessions(env.DB, { from: url.searchParams.get('from') || '', to: url.searchParams.get('to') || '' }) });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/calendar/events") {
+      const result = await saveCalendarSession(env.DB, body);
+      return result.ok ? json({ success: true, id: result.id }, 201) : badRequest(result.reason);
+    }
+    const calendarDeleteMatch = url.pathname.match(/^\/v1\/admin\/calendar\/events\/([^/]+)$/);
+    if (request.method === "DELETE" && calendarDeleteMatch) {
+      const changed = await cancelCalendarSession(env.DB, decodeURIComponent(calendarDeleteMatch[1]));
+      return changed ? json({ success: true }) : json({ success: false, error: '活動不存在' }, 404);
     }
     if (
       request.method === "POST" &&
@@ -710,6 +729,7 @@ async function app(request, env) {
       env.DB,
       member.userId,
       decodeURIComponent(registrationMatch[1]),
+      String((await readJson(request))?.source || 'member_portal'),
     );
     return result.ok
       ? json({ success: true, ...result }, result.duplicate ? 200 : 201)
