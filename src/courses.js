@@ -39,6 +39,70 @@ export async function listPublicCourseSessions(db) {
   return (result.results || []).map(publicSession);
 }
 
+// Direct port of the MLM calendar source, with course_sessions as the single
+// event table.  This prevents the calendar and the member course area from
+// drifting into two independent registrations.
+export async function listCalendarSessions(db, { from = '', to = '' } = {}) {
+  const clauses = [];
+  const values = [];
+  if (from) { clauses.push('cs.starts_at >= ?'); values.push(from); }
+  if (to) { clauses.push('cs.starts_at < ?'); values.push(to); }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const result = await db.prepare(`
+    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+      cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
+      cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at, cs.status AS session_status, c.status AS course_status
+    FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    ${where}
+    ORDER BY cs.starts_at ASC
+  `).bind(...values).all();
+  return (result.results || []).map(row => ({ ...publicSession(row), sessionStatus: row.session_status, courseStatus: row.course_status }));
+}
+
+export async function listAdminCourses(db) {
+  const result = await db.prepare(`
+    SELECT id, title, description, status, created_at, updated_at
+    FROM courses ORDER BY created_at DESC
+  `).all();
+  return result.results || [];
+}
+
+export async function saveCalendarSession(db, body) {
+  const courseId = String(body.courseId || '').trim();
+  const mode = String(body.mode || '').trim();
+  const startsAt = String(body.startsAt || '').trim();
+  const endsAt = String(body.endsAt || '').trim();
+  const checkinOpensAt = String(body.checkinOpensAt || '').trim();
+  const checkinClosesAt = String(body.checkinClosesAt || '').trim();
+  if (!courseId || !['physical', 'online'].includes(mode) || !startsAt || !endsAt || !checkinOpensAt || !checkinClosesAt) {
+    return { ok: false, reason: 'missing_calendar_fields' };
+  }
+  if (Date.parse(endsAt) <= Date.parse(startsAt) || Date.parse(checkinClosesAt) <= Date.parse(checkinOpensAt)) {
+    return { ok: false, reason: 'invalid_calendar_range' };
+  }
+  const course = await db.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
+  if (!course) return { ok: false, reason: 'course_not_found' };
+  const id = String(body.id || '').trim() || newId('session');
+  const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
+  const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
+  if (existing) {
+    const codeSql = body.checkinCode ? ', checkin_code_hash = ?' : '';
+    const binds = [courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt];
+    if (body.checkinCode) binds.push(codeHash);
+    binds.push(String(body.status || 'scheduled'), id);
+    await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, checkin_opens_at = ?, checkin_closes_at = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
+  } else {
+    await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, checkin_opens_at, checkin_closes_at, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
+  }
+  return { ok: true, id };
+}
+
+export async function cancelCalendarSession(db, sessionId) {
+  const result = await db.prepare(`UPDATE course_sessions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(sessionId).run();
+  return Boolean(result.meta?.changes);
+}
+
 export async function listMyCourseSessions(db, userId) {
   const result = await db.prepare(`
     SELECT cr.status AS registration_status, ar.status AS attendance_status,
@@ -55,7 +119,7 @@ export async function listMyCourseSessions(db, userId) {
   return (result.results || []).map(row => ({ ...publicSession(row), registrationStatus: row.registration_status, attendanceStatus: row.attendance_status || '' }));
 }
 
-export async function registerForSession(db, userId, sessionId) {
+export async function registerForSession(db, userId, sessionId, source = 'member_portal') {
   const session = await db.prepare(`
     SELECT cs.id, cs.status, c.status AS course_status
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id WHERE cs.id = ?
@@ -63,8 +127,8 @@ export async function registerForSession(db, userId, sessionId) {
   if (!session || session.course_status !== 'published' || session.status !== 'scheduled') return { ok: false, reason: 'session_unavailable' };
   const registrationId = newId('registration');
   try {
-    await db.prepare('INSERT INTO course_registrations (id, course_session_id, platform_user_id) VALUES (?, ?, ?)')
-      .bind(registrationId, sessionId, userId).run();
+    await db.prepare('INSERT INTO course_registrations (id, course_session_id, platform_user_id, source) VALUES (?, ?, ?, ?)')
+      .bind(registrationId, sessionId, userId, String(source || 'member_portal').slice(0, 40)).run();
   } catch (error) {
     if (String(error.message || '').includes('UNIQUE constraint failed: course_registrations.course_session_id, course_registrations.platform_user_id')) {
       return { ok: true, duplicate: true };
