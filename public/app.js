@@ -36,8 +36,9 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
+  const memberHeader = state.tab === "home" ? "" : `<header class="hero member-hero">${avatar()}<div><h1>MiraBeauty 會員中心</h1><p>${esc(state.member?.displayName || "LINE 會員")}，歡迎回來</p></div></header>`;
   $("#app").innerHTML =
-    `<header class="hero member-hero">${avatar()}<div><h1>MiraBeauty 會員中心</h1><p>${esc(state.member?.displayName || "LINE 會員")}，歡迎回來</p></div></header><div class="content">${body}</div><nav class="nav">${[
+    `${memberHeader}<div class="content">${body}</div><nav class="nav">${[
       ["home", "首頁"],
       ["wallet", "錢包"],
       ["courses", "課程"],
