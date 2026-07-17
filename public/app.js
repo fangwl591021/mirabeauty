@@ -133,10 +133,10 @@ async function render() {
   return home();
 }
 const portalIcon = (name) => ({
-  courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v13H4z"/><path d="M7.5 9h9M7.5 12h6M7.5 15h4"/></svg>`,
-  daily: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4.5l2.2 2.2-2.7 2.7 2.3 2.3-2.4 4.5H8.4L6 15.7l2.3-2.3-2.7-2.7L8 8.5z"/><path d="M10 4V2h4v2"/></svg>`,
-  profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="1.5"/><path d="M7.5 8h9M7.5 12h9M7.5 16h6"/></svg>`,
-  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9.5H4z"/><path d="M9.5 19.5v-5h5v5"/></svg>`
+  courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2c1.3 2.3 3 3.3 5.2 3.6-1.6 1.6-2.2 3.3-1.8 5.5-2.1-.6-3.5-.1-5.4 1.4.1-2.4-.8-4-2.8-5.4 2.3-.6 3.8-2 4.8-5.2Z"/><path d="M18.8 14.5c.5.9 1.2 1.3 2.1 1.5-.7.6-.9 1.3-.7 2.2-.8-.3-1.4 0-2.2.5.1-.9-.3-1.6-1.1-2.1.9-.2 1.5-.8 1.9-1.9Z"/></svg>`,
+  daily: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.6"/><path d="m9.1 12.6-1.4 7 4.3-2 4.3 2-1.4-7"/><path d="m12 6.5.75 1.7 1.85.15-1.4 1.22.42 1.8L12 10.4l-1.62 1.02.42-1.8-1.4-1.22 1.85-.15Z"/></svg>`,
+  profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.3" y="4.3" width="15.4" height="15.4" rx="3.2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 7.1h.01M16 7.1h.01"/></svg>`,
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 11 7.5-6.2 7.5 6.2v8.3H4.5z"/><path d="M9 19.3v-4.4h6v4.4M12 7.2v3.1M10.45 8.75h3.1"/></svg>`
 }[name] || "");
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
