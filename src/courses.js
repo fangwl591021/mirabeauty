@@ -211,17 +211,19 @@ export async function checkInToSession(db, { userId, sessionId, method, code, sm
   return { ok: true, duplicate: false, attendanceId, pointResult };
 }
 
-export async function smartCheckInToActiveSession(db, { userId, latitude, longitude, accuracy }) {
-  if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) return { ok: false, reason: 'location_required' };
+export async function smartCheckInToActiveSession(db, { userId, latitude, longitude, accuracy, bypassLocation = false }) {
   const now = new Date().toISOString();
-  const result = await db.prepare(`SELECT cs.id, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters
+  const result = await db.prepare(`SELECT cs.id, cs.attendance_mode, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
-    WHERE cs.attendance_mode = 'physical' AND cs.status = 'scheduled' AND c.status = 'published'
+    WHERE cs.status = 'scheduled' AND c.status = 'published'
       AND cs.checkin_opens_at <= ? AND cs.checkin_closes_at >= ? ORDER BY cs.starts_at ASC LIMIT 1`).bind(now, now).first();
   if (!result) return { ok: false, reason: 'no_active_session' };
-  if (!Number(result.venue_latitude) || !Number(result.venue_longitude)) return { ok: false, reason: 'venue_not_configured' };
-  const meters = distanceMeters(Number(latitude), Number(longitude), Number(result.venue_latitude), Number(result.venue_longitude));
-  const allowed = Number(result.checkin_radius_meters) || 150;
-  if (meters > allowed + Math.max(0, Number(accuracy) || 0)) return { ok: false, reason: 'outside_venue', distanceMeters: Math.round(meters), allowedMeters: allowed };
-  return checkInToSession(db, { userId, sessionId: result.id, method: 'physical_qr', smartCheckin: true });
+  if (result.attendance_mode === 'physical' && !bypassLocation) {
+    if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) return { ok: false, reason: 'location_required' };
+    if (!Number(result.venue_latitude) || !Number(result.venue_longitude)) return { ok: false, reason: 'venue_not_configured' };
+    const meters = distanceMeters(Number(latitude), Number(longitude), Number(result.venue_latitude), Number(result.venue_longitude));
+    const allowed = Number(result.checkin_radius_meters) || 150;
+    if (meters > allowed + Math.max(0, Number(accuracy) || 0)) return { ok: false, reason: 'outside_venue', distanceMeters: Math.round(meters), allowedMeters: allowed };
+  }
+  return checkInToSession(db, { userId, sessionId: result.id, method: result.attendance_mode === 'online' ? 'online_keyword' : 'physical_qr', smartCheckin: true });
 }
