@@ -110,6 +110,7 @@ $("#ruleForm").addEventListener("submit", (event) =>
   })).then(() => loadPointRules()),
 );
 const ruleFrequencyLabel = { once:"僅一次", daily:"每日一次", per_completion:"完成給一次" };
+const ruleEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"簽到打卡", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"任務完成", daily_ad_view:"簽到觀看", daily_ad_view_completed:"簽到觀看", daily_view:"簽到觀看" };
 async function loadPointRules() {
   const container = $("#ruleList");
   if (!container) return;
@@ -118,7 +119,7 @@ async function loadPointRules() {
     const fixedOnce = new Set(["member_joined", "registration_completed"]);
     container.innerHTML = data.rules.length ? data.rules.map((rule) => {
       const fixed = fixedOnce.has(rule.event_type);
-      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event">${rule.event_type}</div><label>點數<input data-rule-field="points" type="number" min="0" value="${Number(rule.points)}"></label><label>發點頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${fixed && key !== "once" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
+      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event" data-event-type="${rule.event_type}">${ruleEventLabel[rule.event_type] || rule.event_type}</div><label>點數<input data-rule-field="points" type="number" min="0" value="${Number(rule.points)}"></label><label>發點頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${fixed && key !== "once" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
     }).join("") : '<p class="muted">尚未建立點數規則。</p>';
   } catch (error) {
     container.innerHTML = `<p class="danger">${error.message}</p>`;
@@ -130,7 +131,7 @@ $("#ruleList").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
     await api(`/v1/admin/point-rules/${form.dataset.ruleId}`, {
-      eventType: form.querySelector(".rule-event").textContent.trim(),
+      eventType: form.querySelector(".rule-event").dataset.eventType,
       points: Number(form.querySelector('[data-rule-field="points"]').value),
       awardFrequency: form.querySelector('[data-rule-field="frequency"]').value,
       status: form.querySelector('[data-rule-field="status"]').value,
