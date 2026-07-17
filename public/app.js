@@ -71,6 +71,16 @@ async function login() {
     liff.login({ redirectUri: location.href });
     return;
   }
+  // Full-size LIFF 的原生加好友視窗：不離開目前登入流程。
+  // 需先在 LINE Developers 將官方帳號連結至此 LINE Login Channel。
+  if (liff.isInClient() && typeof liff.requestFriendship === "function") {
+    const friendship = await liff.getFriendship().catch(() => null);
+    if (!friendship?.friendFlag) {
+      await liff.requestFriendship();
+      const confirmed = await liff.getFriendship().catch(() => null);
+      if (!confirmed?.friendFlag) throw new Error("請先在上方視窗加入官方帳號，再繼續登入");
+    }
+  }
   const idToken = liff.getIDToken();
   const lineProfile = await liff.getProfile().catch(() => null);
   const r = await api("/v1/auth/line/verify", {
@@ -91,15 +101,9 @@ async function login() {
   await render();
 }
 async function renderLogin() {
-  const inviteNotice = state.invite
-    ? `<div class="notice">你正透過推薦連結加入 MiraBeauty；完成 LINE 登入與註冊後，系統會自動建立推薦關係。<br><br><button class="btn alt" id="continue">繼續登入</button></div>`
-    : "";
   $("#app").innerHTML =
-    `<section class="hero"><h1>MiraBeauty 會員中心</h1><p>登入、點數、課程與每日任務</p></section><div class="content">${inviteNotice}<div class="card"><h2>使用 LINE 登入</h2><p class="muted">以 LINE 身份建立你的會員、邀約與點數紀錄。</p><button class="btn" id="login">LINE Login</button></div></div>`;
+    `<section class="hero"><h1>MiraBeauty 會員中心</h1><p>登入、點數、課程與每日任務</p></section><div class="content"><div class="card"><h2>${state.invite ? "受邀加入 MiraBeauty" : "使用 LINE 登入"}</h2><p class="muted">${state.invite ? "點擊後將在 LIFF 內確認官方帳號好友狀態，完成後自動登入並建立推薦關係。" : "以 LINE 身份建立你的會員、邀約與點數紀錄。"}</p><button class="btn" id="login">${state.invite ? "加入並使用 LINE 登入" : "LINE Login"}</button></div></div>`;
   $("#login").onclick = () => login().catch((e) => alert(e.message));
-  $("#continue")?.addEventListener("click", () =>
-    login().catch((e) => alert(e.message)),
-  );
 }
 async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，重新驗證以補上尚未建立的推薦關係。
