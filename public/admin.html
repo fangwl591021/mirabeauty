@@ -146,6 +146,12 @@
                   placeholder="例如 10"
                   required /></label
               ><label
+                >發點頻率<select id="ruleFrequency">
+                  <option value="once">僅一次</option>
+                  <option value="daily">每日一次</option>
+                  <option value="per_completion" selected>完成給一次</option>
+                </select></label
+              ><label
                 >啟用狀態<select id="ruleStatus">
                   <option value="draft">草稿</option>
                   <option value="active">啟用</option>
@@ -153,10 +159,20 @@
               ><button class="primary" type="submit">建立點數規則</button>
             </form>
           </section>
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>既有點數規則</h2>
+                <p>可直接修改點數、發點頻率與啟用狀態；加入會員與完成註冊固定僅一次。</p>
+              </div>
+              <button class="secondary" type="button" id="refreshRules">重新整理</button>
+            </div>
+            <div id="ruleList" class="rule-list"></div>
+          </section>
           <section class="notice-card">
             <b>目前可用事件</b
             ><span
-              >daily_ad_checkin（輪播簽到）、course_registered（課程報名）、attendance_verified（課程簽到）。</span
+              >member_joined（加入會員）、registration_completed（完成註冊）、share_referral（分享邀約成功）、daily_ad_checkin（輪播簽到）、course_registered（課程報名）、attendance_verified（課程簽到）、task_completed（任務完成）。</span
             >
           </section>
         </section>
