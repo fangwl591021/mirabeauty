@@ -23,7 +23,9 @@ function publicSession(row) {
     venueAddress: row.venue_address,
     meetingUrl: row.meeting_url,
     checkinOpensAt: row.checkin_opens_at,
-    checkinClosesAt: row.checkin_closes_at
+    checkinClosesAt: row.checkin_closes_at,
+    registeredAt: row.registered_at || '',
+    attendanceAt: row.attendance_at || ''
   };
 }
 
@@ -105,7 +107,7 @@ export async function cancelCalendarSession(db, sessionId) {
 
 export async function listMyCourseSessions(db, userId) {
   const result = await db.prepare(`
-    SELECT cr.status AS registration_status, ar.status AS attendance_status,
+    SELECT cr.status AS registration_status, cr.registered_at, ar.status AS attendance_status, ar.checked_in_at AS attendance_at,
       cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
       cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
