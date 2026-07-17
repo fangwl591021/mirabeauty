@@ -237,7 +237,11 @@
               <div class="calendar-editor-actions"><button class="primary" id="calendarSave" type="button">儲存活動</button><button class="danger" id="calendarDelete" type="button">取消場次</button></div>
               <p id="calendarEditStatus" class="muted"></p>
             </div>
-            <div id="calendarQr" class="calendar-qr hidden"><div id="calendarQrImage"></div><div><strong>課程掃碼報名</strong><p>會員掃碼後即進入對應場次完成報名；報名成功依「課程報名」點數規則贈點。</p><input id="calendarQrUrl" readonly><button class="outline" id="calendarCopyQr" type="button">複製活動網址</button></div></div>
+            <section class="calendar-smart-checkin" aria-label="固定 QR 智慧報到">
+              <h3>固定 QR 智慧報到</h3>
+              <p>現場只需要這一組 QR。會員掃碼後，系統會依目前日曆活動、時間與報名資料判定對應場次並發放課程點數。</p>
+              <div class="calendar-smart-qr"><div id="calendarSmartQrImage"></div><div><strong>固定報到 QR</strong><p id="calendarSmartQrUrl" class="calendar-url"></p><div class="calendar-smart-actions"><a id="calendarTestQr" target="_blank" rel="noopener">測試連結</a><button class="outline" id="calendarCopyQr" type="button">複製連結</button></div></div></div>
+            </section>
             <div class="calendar-month-head"><button class="outline" id="calendarPrev" type="button">← 上月</button><strong id="calendarMonthTitle"></strong><button class="outline" id="calendarNext" type="button">下月 →</button></div>
             <div class="calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
             <div id="calendarMonth" class="calendar-month"></div>
