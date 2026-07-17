@@ -29,6 +29,7 @@ const esc = (s) =>
         c
       ],
   );
+const format = (value) => new Intl.NumberFormat("zh-TW").format(Number(value) || 0);
 function avatar(member = state.member) {
   return member?.pictureUrl
     ? `<img class="avatar" src="${esc(member.pictureUrl)}" alt="LINE 頭貼">`
