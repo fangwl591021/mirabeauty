@@ -279,17 +279,6 @@ async function app(request, env) {
         { success: false, error: "Administrator access required" },
         403,
       );
-    if (request.method === "POST" && url.pathname === "/v1/admin/geocode") {
-      const body = (await readJson(request)) || {};
-      const address = String(body.address || "").trim();
-      if (!address) return badRequest("address_required");
-      if (!env.GOOGLE_MAPS_API_KEY) return json({ success: false, error: "GOOGLE_MAPS_API_KEY is not configured" }, 503);
-      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${encodeURIComponent(env.GOOGLE_MAPS_API_KEY)}&language=zh-TW&region=tw`);
-      const data = await response.json();
-      const location = data?.results?.[0]?.geometry?.location;
-      if (!location || data.status !== "OK") return badRequest("address_not_found");
-      return json({ success: true, latitude: location.lat, longitude: location.lng, formattedAddress: data.results[0].formatted_address });
-    }
     if (request.method === "GET" && url.pathname === "/v1/admin/overview") {
       const [members, courses, campaigns, points, checkins] =
         await env.DB.batch([
@@ -775,9 +764,7 @@ async function app(request, env) {
   if (request.method === "POST" && url.pathname === "/v1/course-sessions/smart-check-in") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const body = (await readJson(request)) || {};
-    const bypassLocation = await isAdminMember(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS);
-    const result = await smartCheckInToActiveSession(env.DB, { userId: member.userId, latitude: body.latitude, longitude: body.longitude, accuracy: body.accuracy, bypassLocation });
+    const result = await smartCheckInToActiveSession(env.DB, { userId: member.userId });
     return result.ok ? json({ success: true, ...result }, result.duplicate ? 200 : 201) : badRequest(result.reason);
   }
 
