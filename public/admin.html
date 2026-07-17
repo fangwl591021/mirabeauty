@@ -107,18 +107,17 @@
             <div class="panel-head">
               <div>
                 <h2>會員 CRM</h2>
-                <p>會員以 LINE Login 建立，推薦人依邀約連結自動固定。</p>
+                <p>以會員為中心查看資料、推薦關係、點數與活動紀錄。</p>
               </div>
+              <button class="secondary" type="button" id="refreshMembers">重新整理</button>
             </div>
-            <div class="empty">
-              <b>會員資料會持續累積</b
-              ><span>目前系統會員數：<strong id="memberTotal">–</strong></span>
-              <p>
-                會員前台可查看 LINE
-                頭貼、姓名、會員編號、系統推薦人、點數錢包與專屬 QR 碼。
-              </p>
+            <div class="crm-toolbar">
+              <label class="crm-search">⌕<input id="memberSearch" placeholder="搜尋姓名、電話、會員編號、LINE ID…" /></label>
+              <span>會員數：<strong id="memberTotal">–</strong></span>
             </div>
+            <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>會員</th><th>會員編號</th><th>推薦人</th><th>點數錢包</th><th>註冊狀態</th><th>建立時間</th><th></th></tr></thead><tbody id="memberList"></tbody></table></div>
           </section>
+          <section id="memberDetail" class="panel crm-detail hidden"></section>
         </section>
 
         <section class="page" data-content="points">
