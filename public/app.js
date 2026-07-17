@@ -3,11 +3,13 @@ const state = {
   token: localStorage.getItem("mirabeauty_session") || "",
   member: null,
   tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
-  invite: new URLSearchParams(location.search).get("invite") || "",
+  invite: new URLSearchParams(location.search).get("invite") || sessionStorage.getItem("mirabeauty_invite") || "",
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
+if (new URLSearchParams(location.search).get("invite")) sessionStorage.setItem("mirabeauty_invite", state.invite);
+const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
     ...options,
@@ -84,12 +86,13 @@ async function login() {
   state.token = r.sessionToken;
   localStorage.setItem("mirabeauty_session", state.token);
   state.member = r.member;
+  sessionStorage.removeItem("mirabeauty_invite");
   history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
 }
 async function renderLogin() {
   const inviteNotice = state.invite
-    ? `<div class="notice">請先加入官方帳號，再以 LINE 登入完成註冊。<br><br><a class="btn" href="${state.config.officialAccountUrl}" target="_blank">加入官方帳號</a><br><br><button class="btn alt" id="continue">我已加入，繼續登入</button></div>`
+    ? `<div class="notice">你正透過推薦連結加入 MiraBeauty；完成 LINE 登入與註冊後，系統會自動建立推薦關係。<br><br><button class="btn alt" id="continue">繼續登入</button></div>`
     : "";
   $("#app").innerHTML =
     `<section class="hero"><h1>MiraBeauty 會員中心</h1><p>登入、點數、課程與每日任務</p></section><div class="content">${inviteNotice}<div class="card"><h2>使用 LINE 登入</h2><p class="muted">以 LINE 身份建立你的會員、邀約與點數紀錄。</p><button class="btn" id="login">LINE Login</button></div></div>`;
@@ -99,6 +102,15 @@ async function renderLogin() {
   );
 }
 async function render() {
+  // 已有工作階段的會員再次從邀約 QR 進站時，重新驗證以補上尚未建立的推薦關係。
+  if (state.token && state.invite) {
+    try {
+      await login();
+      return;
+    } catch (error) {
+      alert(error.message || "無法建立推薦關係");
+    }
+  }
   if (!state.token) return renderLogin();
   try {
     state.member = (await api("/v1/me")).member;
@@ -159,7 +171,7 @@ async function showWalletQr(qrId, expiryId) {
 async function wallet() {
   const r = await api("/v1/points/wallet");
   layout(
-    `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div><div class="card"><h3>點數明細</h3>${r.wallet.entries.length ? r.wallet.entries.map((x) => `<div class="item"><b>${esc(x.event_type)}</b><span class="row"><span class="muted">${esc(x.created_at)}</span><b>+${x.delta}</b></span></div>`).join("") : '<p class="muted">尚無點數紀錄</p>'}</div>`,
+    `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div><div class="card"><h3>點數明細</h3>${r.wallet.entries.length ? r.wallet.entries.map((x) => `<div class="item"><b>${esc(pointEventLabel[x.event_type] || x.event_type)}</b><span class="row"><span class="muted">${esc(x.created_at)}</span><b>+${x.delta}</b></span></div>`).join("") : '<p class="muted">尚無點數紀錄</p>'}</div>`,
   );
   $("#walletQr").onclick = () => showWalletQr("qr", "expire");
 }
