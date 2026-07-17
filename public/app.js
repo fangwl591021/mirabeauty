@@ -14,6 +14,14 @@ const courseSessionFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("courseSession") || ""; }
   catch { return ""; }
 };
+const smartCheckinFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("smartCheckin") === "1") return true;
+  const liffState = params.get("liff.state");
+  if (!liffState) return false;
+  try { return new URL(liffState, location.origin).searchParams.get("smartCheckin") === "1"; }
+  catch { return false; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
@@ -21,6 +29,7 @@ const state = {
   tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
   invite: inviteFromLocation() || sessionStorage.getItem("mirabeauty_invite") || "",
   courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
+  smartCheckin: smartCheckinFromLocation() || sessionStorage.getItem("mirabeauty_smart_checkin") === "1",
   courseView: "catalog",
   daily: null,
 };
@@ -28,6 +37,7 @@ const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
 if (inviteFromLocation()) sessionStorage.setItem("mirabeauty_invite", state.invite);
 if (courseSessionFromLocation()) sessionStorage.setItem("mirabeauty_course_session", state.courseSession);
+if (smartCheckinFromLocation()) sessionStorage.setItem("mirabeauty_smart_checkin", "1");
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
@@ -138,12 +148,38 @@ async function render() {
     return renderLogin();
   }
   if (!state.member.profileCompletedAt) return profile(true);
+  if (state.smartCheckin) return smartCheckin();
   if (state.courseSession) state.tab = "courses";
   if (state.tab === "wallet") return wallet();
   if (state.tab === "courses") return courses();
   if (state.tab === "daily") return daily();
   if (state.tab === "profile") return profile();
   return home();
+}
+const smartCheckinReason = { location_required:"需要允許手機定位才能完成現場簽到。", no_active_session:"目前沒有可報到的現場活動，請確認報到時間。", venue_not_configured:"此活動尚未設定場地座標，請洽現場人員。", outside_venue:"目前位置不在活動場地簽到範圍內。", registration_required:"尚未報名此場活動，無法完成簽到。", session_unavailable:"此場活動目前無法簽到。" };
+function readLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("此裝置不支援定位"));
+    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
+  });
+}
+async function smartCheckin() {
+  state.tab = "courses";
+  layout('<section class="card smart-checkin-result"><h2>智慧簽到驗證中</h2><p class="muted">正在確認你的報名資格、報到時間與活動地點…</p></section>');
+  try {
+    const position = await readLocation();
+    const result = await api("/v1/course-sessions/smart-check-in", { method:"POST", body:JSON.stringify({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy }) });
+    const message = result.duplicate ? "你已完成本場簽到，無需重複報到。" : "簽到成功，課程簽到點數已依規則入帳。";
+    layout(`<section class="card smart-checkin-result success"><h2>✓ ${message}</h2><p class="muted">已完成報名資格、報到時間與現場位置驗證。</p><button class="btn" id="backCourses">查看課程紀錄</button></section>`);
+  } catch (error) {
+    const text = smartCheckinReason[error.message] || (error.code === 1 ? "你拒絕了定位權限，無法完成現場簽到。" : error.message || "智慧簽到失敗");
+    layout(`<section class="card smart-checkin-result"><h2>暫時無法完成簽到</h2><p class="muted">${esc(text)}</p><button class="btn alt" id="retrySmartCheckin">重新驗證</button></section>`);
+  }
+  state.smartCheckin = false;
+  sessionStorage.removeItem("mirabeauty_smart_checkin");
+  history.replaceState({}, "", location.pathname);
+  $("#backCourses")?.addEventListener("click", () => courses());
+  $("#retrySmartCheckin")?.addEventListener("click", () => { state.smartCheckin = true; smartCheckin(); });
 }
 const portalIcon = (name) => ({
   courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2c1.3 2.3 3 3.3 5.2 3.6-1.6 1.6-2.2 3.3-1.8 5.5-2.1-.6-3.5-.1-5.4 1.4.1-2.4-.8-4-2.8-5.4 2.3-.6 3.8-2 4.8-5.2Z"/><path d="M18.8 14.5c.5.9 1.2 1.3 2.1 1.5-.7.6-.9 1.3-.7 2.2-.8-.3-1.4 0-2.2.5.1-.9-.3-1.6-1.1-2.1.9-.2 1.5-.8 1.9-1.9Z"/></svg>`,
