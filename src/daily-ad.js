@@ -27,7 +27,7 @@ async function activeCampaign(db) {
       `
     SELECT id, name, required_creative_count, rotation_mode FROM ad_campaigns
     WHERE status = 'active' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP
-    ORDER BY CASE WHEN id = 'campaign_daily_template' THEN 0 ELSE 1 END, starts_at DESC LIMIT 1
+    ORDER BY CASE WHEN id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
   `,
     )
     .first();
@@ -67,10 +67,10 @@ export async function getDailyAdCampaign(db, userId) {
   const checkin = await db
     .prepare(
       `
-    SELECT id FROM daily_checkins WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND status = 'verified'
+    SELECT id FROM daily_checkins WHERE platform_user_id = ? AND business_date = ? AND status = 'verified'
   `,
     )
-    .bind(userId, campaign.id, date)
+    .bind(userId, date)
     .first();
   return {
     campaign: {
@@ -221,6 +221,13 @@ export async function checkInDailyAd(db, userId) {
   const campaign = await activeCampaign(db);
   if (!campaign) return { ok: false, reason: "no_active_campaign" };
   const date = businessDate();
+  const alreadyCheckedIn = await db
+    .prepare(
+      "SELECT id FROM daily_checkins WHERE platform_user_id = ? AND business_date = ? AND status = 'verified' LIMIT 1",
+    )
+    .bind(userId, date)
+    .first();
+  if (alreadyCheckedIn) return { ok: true, duplicate: true };
   const qualifying = await db
     .prepare(
       `
