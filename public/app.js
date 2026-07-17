@@ -21,6 +21,7 @@ const state = {
   tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
   invite: inviteFromLocation() || sessionStorage.getItem("mirabeauty_invite") || "",
   courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
+  courseView: "catalog",
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
@@ -221,6 +222,12 @@ async function courses() {
   }
   const formatCourseDate = (value) => new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", month:"numeric", day:"numeric", weekday:"short" }).format(new Date(value));
   const formatCourseTime = (value) => new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date(value));
+  const formatRecordTime = (value) => value ? new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date(value)) : "—";
+  const activityHeader = `<div class="course-page-head"><h2>課程活動</h2><button class="course-record-tag ${state.courseView === "records" ? "active" : ""}" data-course-view="${state.courseView === "records" ? "catalog" : "records"}">${state.courseView === "records" ? "活動列表" : "課程紀錄"}</button></div>`;
+  const statusOf = (session) => session.attendanceStatus === "verified" ? ["已完成", "completed"] : session.registrationStatus === "cancelled" ? ["已取消", "cancelled"] : ["已報名", "registered"];
+  const records = mine.sessions.length
+    ? `<section class="course-records">${mine.sessions.map((s) => { const [status, type] = statusOf(s); return `<article class="course-record-card"><div class="course-record-top"><div><small>場次紀錄</small><h3>${esc(s.courseTitle || s.title)}</h3></div><span class="course-status ${type}">${status}</span></div><p class="course-record-id">${esc(s.sessionId)}</p><div class="course-record-details"><div><span>活動日期</span><b>${esc(formatCourseDate(s.startsAt))}</b></div><div><span>活動時間</span><b>${esc(formatCourseTime(s.startsAt))}–${esc(formatCourseTime(s.endsAt))}</b></div><div><span>報名時間</span><b>${esc(formatRecordTime(s.registeredAt))}</b></div><div><span>${s.attendanceStatus === "verified" ? "簽到時間" : "報到狀態"}</span><b>${s.attendanceStatus === "verified" ? esc(formatRecordTime(s.attendanceAt)) : "尚未簽到"}</b></div></div></article>`; }).join("")}</section>`
+    : '<div class="course-record-empty">目前還沒有報名任何課程</div>';
   const cards = all.sessions.length
     ? `<section class="course-grid">${all.sessions
         .map((s) => {
@@ -230,7 +237,8 @@ async function courses() {
           return `<article class="card course-card">${image}<div class="course-card-body"><h3>${esc(s.courseTitle || s.title)}</h3><p class="course-description">${esc(s.courseDescription || s.title || "活動說明將於現場提供")}</p><div class="course-card-footer"><div><strong>${esc(formatCourseDate(s.startsAt))}</strong><span>${esc(formatCourseTime(s.startsAt))}–${esc(formatCourseTime(s.endsAt))}</span></div><button class="btn" data-register="${s.sessionId}" ${registered.has(s.sessionId) ? "disabled" : ""}>${registered.has(s.sessionId) ? "已報名" : "我要報名"}</button></div></div></article>`;
         }).join("")}</section>`
     : '<div class="card muted">目前沒有公開課程</div>';
-  layout(`<h2>課程活動</h2>${scanNotice ? `<div class="notice">${esc(scanNotice)}</div>` : ""}${cards}`);
+  layout(`${activityHeader}${scanNotice ? `<div class="notice">${esc(scanNotice)}</div>` : ""}${state.courseView === "records" ? records : cards}`);
+  document.querySelector("[data-course-view]")?.addEventListener("click", async () => { state.courseView = document.querySelector("[data-course-view]").dataset.courseView; await courses(); });
   document.querySelectorAll("[data-register]").forEach(
     (x) =>
       (x.onclick = async () => {
