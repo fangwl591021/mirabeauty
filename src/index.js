@@ -104,6 +104,12 @@ function normalizeTemplateImageUrl(value) {
 
 async function app(request, env) {
   const url = new URL(request.url);
+  if (request.method === "GET" && url.pathname === "/r/checkin") {
+    const target = env.LIFF_ID
+      ? `https://liff.line.me/${env.LIFF_ID}?smartCheckin=1`
+      : `${url.origin}/?smartCheckin=1`;
+    return Response.redirect(target, 302);
+  }
   const templateImage = url.pathname.match(/^\/(?:assets\/checkin-template|v1\/checkin-template\/images)\/([^/]+)$/);
   if (request.method === "GET" && templateImage) {
     const row = await env.DB.prepare("SELECT content_type, bytes FROM checkin_template_images WHERE id = ?").bind(templateImage[1]).first();
