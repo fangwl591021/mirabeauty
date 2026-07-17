@@ -70,8 +70,46 @@ function switchPage(page) {
   };
   $("#pageTitle").textContent = names[page][0];
   $("#pageHint").textContent = names[page][1];
+  if (page === "members") loadMembers();
   if (page === "carousel") loadCheckinTemplate();
   if (page === "points") loadPointRules();
+}
+let crmMembers = [];
+const memberAvatar = (member) => member.picture_url ? `<img class="crm-avatar" src="${esc(member.picture_url)}" alt="">` : `<span class="crm-avatar crm-avatar-empty">${esc((member.display_name || "會").slice(0, 1))}</span>`;
+const crmStatus = (member) => member.profile_completed_at ? '<span class="crm-tag ok">已完成註冊</span>' : '<span class="crm-tag">待完成註冊</span>';
+function renderMembers() {
+  const query = String($("#memberSearch")?.value || "").trim().toLowerCase();
+  const filtered = crmMembers.filter((member) => [member.display_name, member.phone, member.member_number, member.id, member.email].join(" ").toLowerCase().includes(query));
+  $("#memberTotal").textContent = format(crmMembers.length);
+  $("#memberList").innerHTML = filtered.length ? filtered.map((member) => `<tr><td><div class="crm-member">${memberAvatar(member)}<div><b>${esc(member.display_name || "未命名會員")}</b><small>${esc(member.phone || member.email || member.id)}</small></div></div></td><td>${esc(member.member_number || "–")}</td><td>${esc(member.referrer_name || "直接加入")}<small>${esc(member.referrer_member_number || "")}</small></td><td><b class="crm-points">${format(member.points_balance)}</b></td><td>${crmStatus(member)}</td><td>${esc(String(member.created_at || "").replace("T", " ").slice(0, 16))}</td><td><button class="crm-open" data-member-id="${esc(member.id)}">CRM 檔案</button></td></tr>`).join("") : '<tr><td colspan="7" class="crm-empty">找不到符合條件的會員</td></tr>';
+  document.querySelectorAll("[data-member-id]").forEach((button) => { button.onclick = () => openMemberDetail(button.dataset.memberId); });
+}
+async function loadMembers() {
+  const list = $("#memberList");
+  if (!list) return;
+  list.innerHTML = '<tr><td colspan="7" class="crm-empty">載入會員資料中…</td></tr>';
+  try {
+    const data = await api("/v1/admin/members");
+    crmMembers = data.members || [];
+    renderMembers();
+  } catch (error) {
+    list.innerHTML = `<tr><td colspan="7" class="crm-empty danger">${esc(error.message)}</td></tr>`;
+  }
+}
+async function openMemberDetail(id) {
+  const panel = $("#memberDetail");
+  panel.classList.remove("hidden");
+  panel.innerHTML = '<div class="crm-empty">載入 CRM 檔案中…</div>';
+  try {
+    const data = await api(`/v1/admin/members/${encodeURIComponent(id)}`);
+    const member = data.member;
+    const items = (title, rows, render) => `<section class="crm-detail-section"><h3>${title}</h3>${rows.length ? `<div class="crm-records">${rows.map(render).join("")}</div>` : '<p class="muted">尚無紀錄</p>'}</section>`;
+    panel.innerHTML = `<div class="crm-detail-head"><div class="crm-member">${memberAvatar(member)}<div><h2>${esc(member.display_name || "未命名會員")}</h2><small>${esc(member.member_number || member.id)}</small></div></div><button class="secondary" id="closeMemberDetail">關閉</button></div><div class="crm-summary"><div><small>目前點數</small><b class="crm-points">${format(member.points_balance)}</b></div><div><small>推薦人</small><b>${esc(member.referrer_name || "直接加入")}</b></div><div><small>聯絡電話</small><b>${esc(member.phone || "未填寫")}</b></div><div><small>註冊狀態</small>${crmStatus(member)}</div></div><div class="crm-detail-grid">${items("點數紀錄", data.ledger, (row) => `<div><b>${esc(row.event_type)}</b><span class="${Number(row.delta) >= 0 ? "crm-plus" : "crm-minus"}">${Number(row.delta) >= 0 ? "+" : ""}${row.delta}</span><small>${esc(row.created_at)}</small></div>`)}${items("課程／活動", data.courses, (row) => `<div><b>${esc(row.title)}</b><span>${esc(row.status)}</span><small>${esc(row.starts_at)}</small></div>`)}${items("每日簽到", data.checkins, (row) => `<div><b>${esc(row.business_date)}</b><span>${esc(row.status)}</span><small>${esc(row.checked_in_at)}</small></div>`)}${items("成功邀約", data.referrals, (row) => `<div><b>${esc(row.display_name || "新會員")}</b><span>${esc(row.member_number || "")}</span><small>${esc(row.created_at)}</small></div>`)}</div>`;
+    $("#closeMemberDetail").onclick = () => panel.classList.add("hidden");
+    panel.scrollIntoView({ behavior:"smooth", block:"start" });
+  } catch (error) {
+    panel.innerHTML = `<p class="danger">${esc(error.message)}</p>`;
+  }
 }
 const localIso = (value) => (value ? new Date(value).toISOString() : "");
 async function submitForm(event, endpoint, body) {
@@ -97,6 +135,8 @@ document
 $("#refresh").addEventListener("click", () =>
   overview().then((ok) => ok && showStatus("資料已重新同步")),
 );
+$("#refreshMembers").addEventListener("click", loadMembers);
+$("#memberSearch").addEventListener("input", renderMembers);
 $("#logout").addEventListener("click", () => {
   localStorage.removeItem("mirabeauty_session");
   location.href = "/";
