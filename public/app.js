@@ -132,7 +132,13 @@ async function render() {
   if (state.tab === "profile") return profile();
   return home();
 }
-const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">▣</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">♜</i><span>簽到贈點</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">▤</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">⌂</i><span>首頁</span></button></section>`;
+const portalIcon = (name) => ({
+  courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v13H4z"/><path d="M7.5 9h9M7.5 12h6M7.5 15h4"/></svg>`,
+  daily: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8v4.5l2.2 2.2-2.7 2.7 2.3 2.3-2.4 4.5H8.4L6 15.7l2.3-2.3-2.7-2.7L8 8.5z"/><path d="M10 4V2h4v2"/></svg>`,
+  profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3.5" width="16" height="17" rx="1.5"/><path d="M7.5 8h9M7.5 12h9M7.5 16h6"/></svg>`,
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 8-6 8 6v9.5H4z"/><path d="M9.5 19.5v-5h5v5"/></svg>`
+}[name] || "");
+const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function home() {
   const wallet = await api("/v1/points/wallet");
