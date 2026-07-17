@@ -134,10 +134,15 @@
             </div>
             <form id="ruleForm" class="form-grid">
               <label
-                >系統事件<input
-                  id="ruleEvent"
-                  placeholder="例如 daily_ad_checkin"
-                  required /></label
+                >系統事件<select id="ruleEvent" required>
+                  <option value="member_joined">加入會員</option>
+                  <option value="registration_completed">完成註冊</option>
+                  <option value="daily_ad_checkin" selected>每日簽到</option>
+                  <option value="share_referral">分享邀約成功</option>
+                  <option value="course_registered">課程報名</option>
+                  <option value="attendance_verified">課程簽到</option>
+                  <option value="task_completed">任務完成</option>
+                </select></label
               ><label
                 >贈送點數<input
                   id="rulePoints"
