@@ -219,13 +219,16 @@ async function courses() {
     sessionStorage.removeItem("mirabeauty_course_session");
     history.replaceState({}, "", `${location.pathname}?tab=courses`);
   }
+  const formatCourseDate = (value) => new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", month:"numeric", day:"numeric", weekday:"short" }).format(new Date(value));
+  const formatCourseTime = (value) => new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hour12:false }).format(new Date(value));
   const cards = all.sessions.length
-    ? all.sessions
-        .map(
-          (s) =>
-            `<div class="card"><h3>${esc(s.courseTitle)}</h3><p>${esc(s.title || s.courseTitle)}</p><p class="muted">${esc(s.startsAt)}｜${s.mode === "physical" ? "現場" : "線上"}</p><button class="btn" data-register="${s.sessionId}" ${registered.has(s.sessionId) ? "disabled" : ""}>${registered.has(s.sessionId) ? "已報名" : "我要報名"}</button></div>`,
-        )
-        .join("")
+    ? `<section class="course-grid">${all.sessions
+        .map((s) => {
+          const image = s.coverUrl
+            ? `<img class="course-cover" src="${esc(s.coverUrl)}" alt="${esc(s.courseTitle)}">`
+            : `<div class="course-cover course-cover-placeholder" aria-hidden="true"><span>✦</span></div>`;
+          return `<article class="card course-card">${image}<div class="course-card-body"><h3>${esc(s.courseTitle || s.title)}</h3><p class="course-description">${esc(s.courseDescription || s.title || "活動說明將於現場提供")}</p><div class="course-card-footer"><div><strong>${esc(formatCourseDate(s.startsAt))}</strong><span>${esc(formatCourseTime(s.startsAt))}–${esc(formatCourseTime(s.endsAt))}</span></div><button class="btn" data-register="${s.sessionId}" ${registered.has(s.sessionId) ? "disabled" : ""}>${registered.has(s.sessionId) ? "已報名" : "我要報名"}</button></div></div></article>`;
+        }).join("")}</section>`
     : '<div class="card muted">目前沒有公開課程</div>';
   layout(`<h2>課程活動</h2>${scanNotice ? `<div class="notice">${esc(scanNotice)}</div>` : ""}${cards}`);
   document.querySelectorAll("[data-register]").forEach(
