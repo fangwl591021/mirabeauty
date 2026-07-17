@@ -215,10 +215,11 @@ async function daily() {
     const mode = creative.image_aspect_mode === "fit" ? "contain" : "cover";
     const bubbleWidths = { nano: "48vw", micro: "56vw", deca: "64vw", hecto: "72vw", kilo: "82vw", mega: "92vw", giga: "100vw" };
     const bubbleWidth = bubbleWidths[creative.bubble_size] || bubbleWidths.nano;
-    const cardLink = creative.image_link || creative.target_url;
+    const detailLink = creative.image_link || creative.target_url;
     const media = `<div class="daily-media-frame" style="aspect-ratio:${esc(ratio)}"><${creative.creative_type === "video" ? "video controls playsinline" : "img"} class="daily-media" ${creative.creative_type === "video" ? "" : `alt="${esc(creative.title || `第 ${index + 1} 頁`)}"`} src="${esc(creative.media_url)}" style="object-fit:${mode}"></${creative.creative_type === "video" ? "video" : "img"}></div>`;
-    const linkButtons = (creative.buttons || []).filter((button) => button.type === "uri" && button.uri).map((button) => `<a class="btn alt link-btn" target="_blank" rel="noopener" href="${esc(button.uri)}" ${button.color ? `style="background:${esc(button.color)};color:#fff"` : ""}>${esc(button.label)}</a>`).join("");
-    return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}"><div class="daily-slide-head"><span>第 ${index + 1} 頁</span><span>${completed.has(creative.id) ? "已完成" : "待觀看"}</span></div>${cardLink ? `<a target="_blank" rel="noopener" href="${esc(cardLink)}">${media}</a>` : media}<div class="daily-slide-body"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><div class="daily-actions"><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${completed.has(creative.id) ? "已完成" : "開始觀看"}</button>${linkButtons}</div><p class="muted watch-status"></p></div></article>`;
+    const extraButtons = (creative.buttons || []).filter((button) => button.type === "uri" && button.uri).map((button) => `<a class="btn alt link-btn" target="_blank" rel="noopener" href="${esc(button.uri)}" ${button.color ? `style="background:${esc(button.color)};color:#fff"` : ""}>${esc(button.label)}</a>`).join("");
+    const detailButton = detailLink ? `<a class="btn alt detail-button" target="_blank" rel="noopener" href="${esc(detailLink)}">詳細說明</a>` : `<button class="btn alt detail-button" data-detail="${esc(creative.id)}">詳細說明</button>`;
+    return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}"><div class="daily-slide-head"><span>第 ${index + 1} 頁</span><span>${completed.has(creative.id) ? "已完成" : "待觀看"}</span></div>${media}<div class="daily-slide-body"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><div class="daily-actions"><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${completed.has(creative.id) ? "已完成" : "開始觀看"}</button>${detailButton}</div>${extraButtons ? `<div class="daily-extra-actions">${extraButtons}</div>` : ""}<p class="muted watch-status"></p></div></article>`;
   };
   layout(
     `<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
@@ -227,6 +228,17 @@ async function daily() {
     button.onclick = () => {
       const creative = r.creatives.find((item) => item.id === button.dataset.watch);
       if (creative) watchCreative(creative, button.closest(".daily-slide"));
+    };
+  });
+  document.querySelectorAll("[data-detail]").forEach((button) => {
+    button.onclick = () => {
+      const creative = cards.find((item) => item.id === button.dataset.detail);
+      if (!creative) return;
+      const dialog = document.createElement("div");
+      dialog.className = "media-dialog";
+      dialog.innerHTML = `<div class="media-dialog-backdrop" data-close-detail></div><div class="media-dialog-panel" role="dialog" aria-modal="true" aria-label="詳細說明"><button class="media-dialog-close" data-close-detail aria-label="關閉">×</button>${creative.creative_type === "video" ? `<video controls playsinline autoplay src="${esc(creative.media_url)}"></video>` : `<img src="${esc(creative.media_url)}" alt="${esc(creative.title || "詳細說明")}">`}</div>`;
+      dialog.querySelectorAll("[data-close-detail]").forEach((close) => { close.onclick = () => dialog.remove(); });
+      document.body.append(dialog);
     };
   });
   const carousel = document.querySelector(".daily-carousel");
