@@ -143,6 +143,21 @@ $("#ruleList").addEventListener("submit", async (event) => {
   }
 });
 $("#refreshRules").addEventListener("click", loadPointRules);
+$("#reconcilePoints").addEventListener("click", async () => {
+  const button = $("#reconcilePoints");
+  if (!confirm("將依目前啟用規則補發尚未入帳的既有完成條件；已入帳資料不會重複發點。是否繼續？")) return;
+  button.disabled = true;
+  button.textContent = "補發中…";
+  try {
+    const result = await api("/v1/admin/point-rules/reconcile", {});
+    showStatus(`補發完成：新增 ${result.awarded} 筆，略過 ${result.skipped} 筆。`);
+  } catch (error) {
+    showStatus(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "補發既有完成條件";
+  }
+});
 $("#courseForm").addEventListener("submit", (event) =>
   submitForm(event, "/v1/admin/courses", () => ({
     title: $("#courseTitle").value.trim(),
