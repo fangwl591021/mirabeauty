@@ -7,6 +7,13 @@ function isWithinWindow(now, opensAt, closesAt) {
   const closes = Date.parse(closesAt);
   return Number.isFinite(opens) && Number.isFinite(closes) && now >= opens && now <= closes;
 }
+function distanceMeters(latitudeA, longitudeA, latitudeB, longitudeB) {
+  const rad = value => Number(value) * Math.PI / 180;
+  const earth = 6371000;
+  const dLat = rad(latitudeB - latitudeA), dLon = rad(longitudeB - longitudeA);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(latitudeA)) * Math.cos(rad(latitudeB)) * Math.sin(dLon / 2) ** 2;
+  return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function publicSession(row) {
   return {
@@ -22,6 +29,9 @@ function publicSession(row) {
     venueName: row.venue_name,
     venueAddress: row.venue_address,
     meetingUrl: row.meeting_url,
+    venueLatitude: Number(row.venue_latitude) || 0,
+    venueLongitude: Number(row.venue_longitude) || 0,
+    checkinRadiusMeters: Number(row.checkin_radius_meters) || 150,
     checkinOpensAt: row.checkin_opens_at,
     checkinClosesAt: row.checkin_closes_at,
     registeredAt: row.registered_at || '',
@@ -33,7 +43,7 @@ export async function listPublicCourseSessions(db) {
   const result = await db.prepare(`
     SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
-      cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
+      cs.meeting_url, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters, cs.checkin_opens_at, cs.checkin_closes_at
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
     WHERE c.status = 'published' AND cs.status = 'scheduled'
     ORDER BY cs.starts_at ASC
@@ -53,7 +63,7 @@ export async function listCalendarSessions(db, { from = '', to = '' } = {}) {
   const result = await db.prepare(`
     SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
-      cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at, cs.status AS session_status, c.status AS course_status
+      cs.meeting_url, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters, cs.checkin_opens_at, cs.checkin_closes_at, cs.status AS session_status, c.status AS course_status
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
     ${where}
     ORDER BY cs.starts_at ASC
@@ -87,15 +97,17 @@ export async function saveCalendarSession(db, body) {
   const id = String(body.id || '').trim() || newId('session');
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
+  const latitude = Number(body.venueLatitude) || 0, longitude = Number(body.venueLongitude) || 0;
+  const radius = Math.max(20, Math.min(3000, Number(body.checkinRadiusMeters) || 150));
   if (existing) {
     const codeSql = body.checkinCode ? ', checkin_code_hash = ?' : '';
-    const binds = [courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt];
+    const binds = [courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), latitude, longitude, radius, checkinOpensAt, checkinClosesAt];
     if (body.checkinCode) binds.push(codeHash);
     binds.push(String(body.status || 'scheduled'), id);
-    await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, checkin_opens_at = ?, checkin_closes_at = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
+    await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, venue_latitude = ?, venue_longitude = ?, checkin_radius_meters = ?, checkin_opens_at = ?, checkin_closes_at = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
   } else {
-    await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, checkin_opens_at, checkin_closes_at, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
+    await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, venue_latitude, venue_longitude, checkin_radius_meters, checkin_opens_at, checkin_closes_at, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), latitude, longitude, radius, checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
   }
   return { ok: true, id };
 }
@@ -154,7 +166,7 @@ async function recordAttempt(db, { sessionId, userId, method, result, reasonCode
   `).bind(newId('attendance_attempt'), sessionId, userId, method, result, reasonCode).run();
 }
 
-export async function checkInToSession(db, { userId, sessionId, method, code, now = Date.now() }) {
+export async function checkInToSession(db, { userId, sessionId, method, code, smartCheckin = false, now = Date.now() }) {
   const normalizedMethod = String(method || '').trim();
   if (!['physical_qr', 'physical_code', 'online_keyword'].includes(normalizedMethod)) return { ok: false, reason: 'invalid_method' };
   const row = await db.prepare(`
@@ -173,7 +185,7 @@ export async function checkInToSession(db, { userId, sessionId, method, code, no
   if (row.attendance_mode === 'physical' && !normalizedMethod.startsWith('physical_')) return reject('method_not_allowed');
   if (row.attendance_mode === 'online' && normalizedMethod !== 'online_keyword') return reject('method_not_allowed');
   if (!isWithinWindow(now, row.checkin_opens_at, row.checkin_closes_at)) return reject('outside_checkin_window');
-  if (!code || !row.checkin_code_hash || await sha256(String(code).trim()) !== row.checkin_code_hash) return reject('invalid_checkin_code');
+  if (!smartCheckin && (!code || !row.checkin_code_hash || await sha256(String(code).trim()) !== row.checkin_code_hash)) return reject('invalid_checkin_code');
 
   const attendanceId = newId('attendance');
   try {
@@ -197,4 +209,19 @@ export async function checkInToSession(db, { userId, sessionId, method, code, no
     metadata: { attendanceId, method: normalizedMethod }
   });
   return { ok: true, duplicate: false, attendanceId, pointResult };
+}
+
+export async function smartCheckInToActiveSession(db, { userId, latitude, longitude, accuracy }) {
+  if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) return { ok: false, reason: 'location_required' };
+  const now = new Date().toISOString();
+  const result = await db.prepare(`SELECT cs.id, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters
+    FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    WHERE cs.attendance_mode = 'physical' AND cs.status = 'scheduled' AND c.status = 'published'
+      AND cs.checkin_opens_at <= ? AND cs.checkin_closes_at >= ? ORDER BY cs.starts_at ASC LIMIT 1`).bind(now, now).first();
+  if (!result) return { ok: false, reason: 'no_active_session' };
+  if (!Number(result.venue_latitude) || !Number(result.venue_longitude)) return { ok: false, reason: 'venue_not_configured' };
+  const meters = distanceMeters(Number(latitude), Number(longitude), Number(result.venue_latitude), Number(result.venue_longitude));
+  const allowed = Number(result.checkin_radius_meters) || 150;
+  if (meters > allowed + Math.max(0, Number(accuracy) || 0)) return { ok: false, reason: 'outside_venue', distanceMeters: Math.round(meters), allowedMeters: allowed };
+  return checkInToSession(db, { userId, sessionId: result.id, method: 'physical_qr', smartCheckin: true });
 }
