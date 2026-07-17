@@ -132,6 +132,13 @@ async function app(request, env) {
       },
     });
   }
+  const cardMedia = url.pathname.match(/^\/v1\/cards\/media\/([^/]+)$/);
+  if (request.method === "GET" && cardMedia) {
+    const row = await env.DB.prepare("SELECT content_type, bytes FROM personal_card_media WHERE id = ?").bind(cardMedia[1]).first();
+    if (!row?.bytes) return new Response("Not found", { status: 404 });
+    const imageBytes = row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes);
+    return new Response(imageBytes, { headers: { "content-type": row.content_type || "application/octet-stream", "content-length": String(imageBytes.byteLength), "cache-control": "public, max-age=31536000, immutable" } });
+  }
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       success: true,
@@ -215,6 +222,21 @@ async function app(request, env) {
     } catch (error) {
       return badRequest(error.message || "Unable to save card");
     }
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/cards/me/media") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const form = await request.formData();
+      const file = form.get("image");
+      if (!(file instanceof File)) return badRequest("請選擇圖片檔案");
+      if (file.size > 1024 * 1024) return badRequest("圖片壓縮後必須小於 1MB");
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) return badRequest("僅支援 JPEG、PNG、WebP 或 GIF");
+      const id = newId("card_media");
+      await env.DB.prepare("INSERT INTO personal_card_media (id, platform_user_id, content_type, bytes) VALUES (?, ?, ?, ?)").bind(id, member.userId, file.type, await file.arrayBuffer()).run();
+      return json({ success: true, url: `${url.origin}/v1/cards/media/${id}`, size: file.size }, 201);
+    } catch (error) { return badRequest(error.message || "圖片上傳失敗"); }
   }
 
   const publicCardMatch = url.pathname.match(/^\/v1\/cards\/([^/]+)\/public$/);
