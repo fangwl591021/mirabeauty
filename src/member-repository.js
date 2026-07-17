@@ -45,7 +45,21 @@ export async function resolveLineMember(db, lineProfile, inviteToken = '') {
     if (lineProfile.picture) await db.prepare('UPDATE member_profiles SET picture_url = ?, updated_at = CURRENT_TIMESTAMP WHERE platform_user_id = ?')
       .bind(String(lineProfile.picture).slice(0, 2048), identity.user_id).run();
     identity.picture_url = String(lineProfile.picture || identity.picture_url || '');
-    return { member: profileFromRow(identity), created: false, referralCreated: false };
+    // LINE 登入可能會經過外部跳轉；若帳號已建立但尚未有推薦人，
+    // 仍允許以第一個有效邀約連結補上歸屬。
+    const referral = identity.referrer_user_id ? null : await resolveInvite(db, inviteToken, identity.user_id);
+    if (referral) {
+      await db.batch([
+        db.prepare('INSERT INTO referral_relationships (id, referred_user_id, referrer_user_id, invite_link_id) VALUES (?, ?, ?, ?)')
+          .bind(newId('referral'), identity.user_id, referral.inviterUserId, referral.inviteLinkId),
+        db.prepare('INSERT INTO audit_logs (id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, ?)')
+          .bind(newId('audit'), identity.user_id, 'referral.confirmed', JSON.stringify({ inviteLinkId: referral.inviteLinkId, recovered: true }))
+      ]);
+      identity.referrer_user_id = referral.inviterUserId;
+      identity.referrer_name = '';
+      identity.referrer_member_number = '';
+    }
+    return { member: profileFromRow(identity), created: false, referralCreated: Boolean(referral) };
   }
 
   const userId = newId('usr');
