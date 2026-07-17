@@ -13,6 +13,7 @@ function profileFromRow(row) {
     email: row.email,
     gender: row.gender || '',
     memberNumber: row.member_number || '',
+    companyMemberNumber: row.company_member_number || '',
     profileCompletedAt: row.profile_completed_at || '',
     systemReferrer: row.referrer_user_id ? {
       userId: row.referrer_user_id,
@@ -24,7 +25,7 @@ function profileFromRow(row) {
 }
 
 const memberFields = `
-  mp.display_name, mp.picture_url, mp.phone, mp.email, mp.gender, mp.member_number, mp.profile_completed_at,
+  mp.display_name, mp.picture_url, mp.phone, mp.email, mp.gender, mp.member_number, mp.company_member_number, mp.profile_completed_at,
   rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
 `;
 
@@ -84,7 +85,7 @@ export async function resolveLineMember(db, lineProfile, inviteToken = '') {
       .bind(newId('audit'), userId, 'referral.confirmed', JSON.stringify({ inviteLinkId: referral.inviteLinkId }))
   );
   await db.batch(statements);
-  return { member: { userId, displayName, pictureUrl, phone: '', email, gender: '', memberNumber: `MB-${userId.slice(-8).toUpperCase()}`, profileCompletedAt: '', systemReferrer: referral ? { userId: referral.inviterUserId, displayName: '', memberNumber: '' } : null, status: 'active' }, created: true, referralCreated: Boolean(referral) };
+  return { member: { userId, displayName, pictureUrl, phone: '', email, gender: '', memberNumber: `MB-${userId.slice(-8).toUpperCase()}`, companyMemberNumber: '', profileCompletedAt: '', systemReferrer: referral ? { userId: referral.inviterUserId, displayName: '', memberNumber: '' } : null, status: 'active' }, created: true, referralCreated: Boolean(referral) };
 }
 
 async function resolveInvite(db, inviteToken, referredUserId) {
@@ -116,12 +117,14 @@ export async function updateMemberProfile(db, userId, profile) {
   const displayName = String(profile.displayName || '').trim().slice(0, 120);
   const phone = String(profile.phone || '').trim().slice(0, 40);
   const gender = String(profile.gender || '').trim();
+  const companyMemberNumber = String(profile.companyMemberNumber || '').trim().slice(0, 80);
   if (!displayName) throw new Error('displayName is required');
   if (!['female', 'male', 'other', 'prefer_not_to_say'].includes(gender)) throw new Error('gender is required');
+  if (!companyMemberNumber) throw new Error('companyMemberNumber is required');
   await db.prepare(`
-    UPDATE member_profiles SET display_name = ?, phone = ?, gender = ?, profile_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    UPDATE member_profiles SET display_name = ?, phone = ?, gender = ?, company_member_number = ?, profile_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
     WHERE platform_user_id = ?
-  `).bind(displayName, phone, gender, userId).run();
+  `).bind(displayName, phone, gender, companyMemberNumber, userId).run();
   return getMember(db, userId);
 }
 
