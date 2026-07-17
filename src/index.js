@@ -298,6 +298,44 @@ async function app(request, env) {
         },
       });
     }
+    if (request.method === "GET" && url.pathname === "/v1/admin/members") {
+      const rows = await env.DB.prepare(`
+        SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
+          mp.gender, mp.member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+        FROM platform_users pu
+        LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
+        LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
+        LEFT JOIN referral_relationships rr ON rr.referred_user_id = pu.id AND rr.status = 'active'
+        LEFT JOIN member_profiles ref_mp ON ref_mp.platform_user_id = rr.referrer_user_id
+        ORDER BY pu.created_at DESC
+        LIMIT 500
+      `).all();
+      return json({ success: true, members: rows.results || [] });
+    }
+    const memberDetailMatch = url.pathname.match(/^\/v1\/admin\/members\/([^/]+)$/);
+    if (request.method === "GET" && memberDetailMatch) {
+      const memberId = memberDetailMatch[1];
+      const member = await env.DB.prepare(`
+        SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
+          mp.gender, mp.member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+        FROM platform_users pu
+        LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
+        LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
+        LEFT JOIN referral_relationships rr ON rr.referred_user_id = pu.id AND rr.status = 'active'
+        LEFT JOIN member_profiles ref_mp ON ref_mp.platform_user_id = rr.referrer_user_id
+        WHERE pu.id = ?
+      `).bind(memberId).first();
+      if (!member) return json({ success: false, error: "Member not found" }, 404);
+      const [ledger, courses, checkins, referrals] = await env.DB.batch([
+        env.DB.prepare("SELECT event_type, event_reference, delta, balance_after, created_at FROM point_ledger_entries WHERE platform_user_id = ? ORDER BY created_at DESC LIMIT 50").bind(memberId).all(),
+        env.DB.prepare("SELECT cr.status, cr.registered_at, cs.title, cs.starts_at FROM course_registrations cr JOIN course_sessions cs ON cs.id = cr.course_session_id WHERE cr.platform_user_id = ? ORDER BY cr.registered_at DESC LIMIT 30").bind(memberId).all(),
+        env.DB.prepare("SELECT business_date, checked_in_at, status FROM daily_checkins WHERE platform_user_id = ? ORDER BY business_date DESC LIMIT 30").bind(memberId).all(),
+        env.DB.prepare("SELECT mp.display_name, mp.member_number, rr.created_at FROM referral_relationships rr LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id WHERE rr.referrer_user_id = ? AND rr.status = 'active' ORDER BY rr.created_at DESC LIMIT 30").bind(memberId).all(),
+      ]);
+      return json({ success: true, member, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
+    }
     if (request.method === "GET" && url.pathname === "/v1/admin/checkin-template") {
       const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first();
       let template = null;
