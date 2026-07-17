@@ -6,7 +6,7 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*", "/assets/checkin-template/*"]
+    "run_worker_first": ["/api/*", "/v1/*", "/i/*", "/w/*", "/c/*", "/assets/checkin-template/*"]
   },
   "vars": {
     "LIFF_ID": "2010723037-HnKrhEXb",
