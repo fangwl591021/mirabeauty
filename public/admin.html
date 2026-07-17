@@ -230,7 +230,8 @@
                 <label>報名開始<input id="calendarRegistrationStartsAt" type="time"></label>
                 <label>報名結束／簽到截止<input id="calendarRegistrationEndsAt" type="time"></label>
                 <label>場地名稱<input id="calendarVenueName" placeholder="例如 台北教室"></label>
-                <label>地址／線上會議網址<input id="calendarVenueAddress" placeholder="現場地址或會議連結"></label>
+                <label>場地地址<input id="calendarVenueAddress" placeholder="輸入完整地址後按 Google 地圖定位"></label>
+                <div class="calendar-geocode"><button class="outline" id="calendarGeocode" type="button">Google 地圖定位</button><small id="calendarGeocodeStatus"></small></div>
                 <label>場地緯度（現場智慧報到必填）<input id="calendarVenueLatitude" type="number" step="any" placeholder="例如 25.0479"></label>
                 <label>場地經度（現場智慧報到必填）<input id="calendarVenueLongitude" type="number" step="any" placeholder="例如 121.5171"></label>
                 <label>簽到範圍（公尺）<input id="calendarCheckinRadius" type="number" min="20" max="3000" value="150"></label>
