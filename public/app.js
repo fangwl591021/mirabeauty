@@ -22,6 +22,14 @@ const smartCheckinFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("smartCheckin") === "1"; }
   catch { return false; }
 };
+const publicCardFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("publicCard")) return params.get("publicCard");
+  const liffState = params.get("liff.state");
+  if (!liffState) return "";
+  try { return new URL(liffState, location.origin).searchParams.get("publicCard") || ""; }
+  catch { return ""; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
@@ -30,6 +38,7 @@ const state = {
   invite: inviteFromLocation() || sessionStorage.getItem("mirabeauty_invite") || "",
   courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
   smartCheckin: smartCheckinFromLocation() || sessionStorage.getItem("mirabeauty_smart_checkin") === "1",
+  publicCard: publicCardFromLocation(),
   courseView: "catalog",
   daily: null,
 };
@@ -67,7 +76,7 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], profile:["我的名片","管理你的會員資料與個人資訊。"] };
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["MiraBeauty 會員中心","會員服務與活動入口。"];
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div></header>`;
   const memberHeader = state.tab === "home" ? "" : featureHeader;
@@ -139,6 +148,7 @@ async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
   // 不自動重導，避免某些 LINE WebView 停在載入畫面。
   if (state.token && state.invite) return renderLogin();
+  if (state.publicCard) return publicCard();
   if (!state.token) return renderLogin();
   try {
     state.member = (await api("/v1/me")).member;
@@ -153,6 +163,7 @@ async function render() {
   if (state.tab === "wallet") return wallet();
   if (state.tab === "courses") return courses();
   if (state.tab === "daily") return daily();
+  if (state.tab === "card") return card();
   if (state.tab === "profile") return profile();
   return home();
 }
@@ -180,8 +191,8 @@ const portalIcon = (name) => ({
   profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.3" y="4.3" width="15.4" height="15.4" rx="3.2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 7.1h.01M16 7.1h.01"/></svg>`,
   home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 11 7.5-6.2 7.5 6.2v8.3H4.5z"/><path d="M9 19.3v-4.4h6v4.4M12 7.2v3.1M10.45 8.75h3.1"/></svg>`
 }[name] || "");
-const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
+const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="card"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function home() {
   const wallet = await api("/v1/points/wallet");
   layout(
@@ -423,6 +434,152 @@ async function watchCreative(creative, card) {
   } catch (e) {
     status.textContent = e.message;
     button.disabled = false;
+  }
+}
+function cardPublicUrl(cardId) {
+  return `${location.origin}/c/${encodeURIComponent(cardId)}`;
+}
+function cardActionItems(card) {
+  const actions = [];
+  const push = (label, type, value) => { if (value) actions.push({ label, type, value }); };
+  push("撥打電話", "phone", card.mobile ? `tel:${card.mobile.replace(/[\s()-]/g, "")}` : "");
+  push("寄送 Email", "email", card.email ? `mailto:${card.email}` : "");
+  push("公司網站", "url", card.websiteUrl);
+  push("加入 LINE", "line", card.lineUrl);
+  push("查看地圖", "map", card.address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}` : "");
+  (card.buttons || []).forEach((button) => push(button.label, button.type, button.value));
+  const seen = new Set();
+  return actions.filter((item) => item.label && item.value && !seen.has(`${item.label}:${item.value}`) && (seen.add(`${item.label}:${item.value}`), true));
+}
+function cardFlex(card) {
+  const action = (label, uri, color = "#B96072") => ({ type:"button", style:"primary", height:"sm", color, action:{ type:"uri", label:String(label).slice(0,20), uri } });
+  const fields = [
+    card.companyName,
+    [card.jobTitle, card.department].filter(Boolean).join("｜"),
+    card.serviceDescription,
+  ].filter(Boolean).join("\n");
+  const bodyContents = [
+    { type:"text", text:card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", wrap:true },
+    ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm" }] : []),
+    ...(fields ? [{ type:"text", text:fields, size:"sm", color:"#5E5260", wrap:true, margin:"md", maxLines:4 }] : []),
+  ];
+  const actions = cardActionItems(card).slice(0, 2);
+  return {
+    type:"bubble", size:"mega",
+    ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:"20:13", aspectMode:"cover" } } : {}),
+    body:{ type:"box", layout:"vertical", paddingAll:"18px", contents:bodyContents },
+    footer:{ type:"box", layout:"vertical", spacing:"sm", contents:[
+      action("查看名片", cardPublicUrl(card.id)),
+      ...actions.map((item) => action(item.label, item.value, "#8D6A54")),
+    ] },
+  };
+}
+async function prepareCardLiff() {
+  if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
+  await liff.init({ liffId: state.config.liffId });
+  if (!liff.isLoggedIn()) {
+    liff.login({ redirectUri: location.href });
+    return false;
+  }
+  return true;
+}
+async function sharePersonalCard(card) {
+  if (!await prepareCardLiff()) return;
+  if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享功能，請在 LINE Developers 啟用 shareTargetPicker");
+  const result = await liff.shareTargetPicker([{ type:"flex", altText:`${card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(card) }]);
+  if (result === false) throw new Error("已取消分享");
+  alert("名片已送出");
+}
+async function sendPersonalCardToChat(card) {
+  if (!await prepareCardLiff()) return;
+  if (!liff.isInClient?.()) throw new Error("請從 LINE 聊天室內開啟會員中心，才能直接傳送到目前聊天室");
+  try {
+    const permission = await liff.permission?.query?.("chat_message.write");
+    if (permission?.state !== "granted") {
+      await liff.permission?.requestAll?.();
+      const refreshed = await liff.permission?.query?.("chat_message.write");
+      if (refreshed?.state && refreshed.state !== "granted") throw new Error("未授權聊天室傳送權限");
+    }
+  } catch (error) {
+    if (error.message) throw error;
+  }
+  if (typeof liff.sendMessages !== "function") throw new Error("此 LINE 環境不支援聊天室傳送");
+  await liff.sendMessages([{ type:"flex", altText:`${card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(card) }]);
+  alert("已傳送到目前聊天室");
+}
+function cardContactRows(card) {
+  const fields = [
+    ["公司名稱", card.companyName], ["職稱", card.jobTitle], ["部門", card.department],
+    ["手機號碼", card.mobile], ["公司電話", card.companyPhone], ["電子郵件", card.email],
+    ["公司網站", card.websiteUrl], ["LINE", card.lineUrl], ["公司地址", card.address], ["服務項目", card.serviceDescription],
+  ].filter(([, value]) => value);
+  return fields.length ? fields.map(([label,value]) => `<article class="business-card-field"><small>${esc(label)}</small><p>${esc(value)}</p></article>`).join("") : '<p class="muted">尚未填寫聯絡資料。</p>';
+}
+function customButtonEditor(button = {}) {
+  return `<div class="card-button-editor" data-card-button-row><input data-card-button-label placeholder="按鈕文字" value="${esc(button.label || "")}"><select data-card-button-type><option value="url" ${button.type === "url" ? "selected" : ""}>網站連結</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select><input data-card-button-value placeholder="網址、電話、Email 或地址" value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/, ""))}"><button type="button" class="card-button-remove" data-remove-card-button>刪除</button></div>`;
+}
+function collectCardButtons() {
+  return Array.from(document.querySelectorAll("[data-card-button-row]")).map((row) => ({
+    label: row.querySelector("[data-card-button-label]")?.value || "",
+    type: row.querySelector("[data-card-button-type]")?.value || "url",
+    value: row.querySelector("[data-card-button-value]")?.value || "",
+  })).filter((button) => button.label || button.value);
+}
+function bindCardButtonEditor() {
+  document.querySelectorAll("[data-remove-card-button]").forEach((button) => button.onclick = () => button.closest("[data-card-button-row]")?.remove());
+  $("#addCardButton")?.addEventListener("click", () => {
+    const holder = $("#cardButtonRows");
+    if (!holder || holder.querySelectorAll("[data-card-button-row]").length >= 4) return alert("最多可設定 4 個自訂按鈕");
+    holder.insertAdjacentHTML("beforeend", customButtonEditor());
+    bindCardButtonEditor();
+  });
+}
+async function card() {
+  const result = await api("/v1/cards/me");
+  const myCard = result.card;
+  if (!myCard) {
+    layout(`<section class="card card-empty"><h2>建立我的名片</h2><p class="muted">建立後會以你的 LINE 名稱、頭貼與已填會員資料為起點；名片只會綁定目前的 LINE 帳號。</p><button class="btn" id="createMyCard">使用 LINE 資料建立名片</button></section>`);
+    $("#createMyCard").onclick = async () => { try { await api("/v1/cards/me", { method:"PUT", body:"{}" }); state.cardView = "contact"; await card(); } catch (error) { alert(error.message); } };
+    return;
+  }
+  const view = state.cardView || "contact";
+  const tabs = `<div class="business-card-tabs"><button data-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button></div>`;
+  let panel = "";
+  if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(myCard)}<div class="business-card-contact-actions">${cardActionItems(myCard).map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
+  if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
+  if (view === "digital") panel = `<section class="business-card-digital">${myCard.coverUrl ? `<img class="business-card-cover" src="${esc(myCard.coverUrl)}" alt="${esc(myCard.displayName)} 的名片封面">` : `<div class="business-card-cover placeholder">${avatar()}</div>`}<h3>${esc(myCard.displayName)}</h3><p class="muted">公開名片網址</p><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(myCard.id))}"><div id="cardPublicQr" class="qr"></div><div class="business-card-share-actions"><button class="btn" id="sharePersonalCard">分享名片</button><button class="btn alt" id="sendPersonalCard">傳送至目前聊天室</button></div><button class="mini-btn" id="copyCardUrl">複製名片網址</button><p class="muted small">分享名片可選擇好友或群組；直接傳送需由 LINE 聊天室內開啟本 LIFF。</p></section>`;
+  layout(`<section class="business-card"><div class="business-card-title"><button class="back-card" data-home-action="home" aria-label="返回首頁">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
+  document.querySelectorAll("[data-card-tab]").forEach((button) => button.onclick = () => { state.cardView = button.dataset.cardTab; card(); });
+  bindPortalActions();
+  if (view === "edit") {
+    bindCardButtonEditor();
+    $("#cardForm").onsubmit = async (event) => { event.preventDefault(); try {
+      const updated = await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({
+        displayName: $("#cardDisplayName").value, englishName: $("#cardEnglishName").value, companyName: $("#cardCompanyName").value,
+        jobTitle: $("#cardJobTitle").value, department: $("#cardDepartment").value, mobile: $("#cardMobile").value,
+        companyPhone: $("#cardCompanyPhone").value, email: $("#cardEmail").value, websiteUrl: $("#cardWebsiteUrl").value,
+        lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value,
+        coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), status:"published"
+      }) });
+      state.cardView = "contact"; alert("名片已儲存"); await card();
+    } catch (error) { alert(error.message); } };
+  }
+  if (view === "digital") {
+    new QRCode($("#cardPublicQr"), { text:cardPublicUrl(myCard.id), width:190, height:190 });
+    $("#copyCardUrl").onclick = async () => { await navigator.clipboard.writeText(cardPublicUrl(myCard.id)); alert("名片網址已複製"); };
+    $("#sharePersonalCard").onclick = () => sharePersonalCard(myCard).catch((error) => alert(error.message));
+    $("#sendPersonalCard").onclick = () => sendPersonalCardToChat(myCard).catch((error) => alert(error.message));
+  }
+}
+async function publicCard() {
+  try {
+    const result = await api(`/v1/cards/${encodeURIComponent(state.publicCard)}/public`);
+    const shared = result.card;
+    const actions = cardActionItems(shared);
+    $("#app").innerHTML = `<section class="public-card-page">${shared.coverUrl ? `<img class="public-card-cover" src="${esc(shared.coverUrl)}" alt="${esc(shared.displayName)} 的名片">` : ""}<section class="public-card-body"><h1>${esc(shared.displayName)}</h1>${shared.englishName ? `<p class="muted">${esc(shared.englishName)}</p>` : ""}<h2>${esc(shared.companyName)}</h2><p>${esc([shared.jobTitle,shared.department].filter(Boolean).join("｜"))}</p>${shared.serviceDescription ? `<p class="public-card-service">${esc(shared.serviceDescription)}</p>` : ""}${cardContactRows(shared)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div><button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section>`;
+    $("#openMemberHome").onclick = () => { state.publicCard = ""; history.replaceState({}, "", location.pathname); render(); };
+  } catch (error) {
+    $("#app").innerHTML = `<section class="center">${esc(error.message || "找不到這張名片")}</section>`;
   }
 }
 async function profile(required = false) {
