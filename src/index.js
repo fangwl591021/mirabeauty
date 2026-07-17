@@ -13,7 +13,7 @@ import {
   resolveLineMember,
   updateMemberProfile,
 } from "./member-repository.js";
-import { getWallet } from "./points.js";
+import { awardPoints, getWallet } from "./points.js";
 import {
   checkInToSession,
   listMyCourseSessions,
@@ -141,6 +141,23 @@ async function app(request, env) {
     }, body.inviteToken);
     if (result.member.status !== "active")
       return json({ success: false, error: "Member is unavailable" }, 403);
+    if (result.created) {
+      await awardPoints(env.DB, {
+        userId: result.member.userId,
+        eventType: "member_joined",
+        eventReference: result.member.userId,
+        idempotencyKey: `member_joined:${result.member.userId}`,
+      });
+      if (result.referralCreated && result.member.systemReferrer?.userId) {
+        await awardPoints(env.DB, {
+          userId: result.member.systemReferrer.userId,
+          eventType: "share_referral",
+          eventReference: result.member.userId,
+          idempotencyKey: `share_referral:${result.member.userId}`,
+          metadata: { referredUserId: result.member.userId },
+        });
+      }
+    }
     const sessionToken = await createSession(
       result.member.userId,
       env.SESSION_SIGNING_SECRET,
@@ -161,11 +178,20 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
+      const wasCompleted = Boolean(member.profileCompletedAt);
       const updated = await updateMemberProfile(
         env.DB,
         member.userId,
         (await readJson(request)) || {},
       );
+      if (!wasCompleted) {
+        await awardPoints(env.DB, {
+          userId: member.userId,
+          eventType: "registration_completed",
+          eventReference: member.userId,
+          idempotencyKey: `registration_completed:${member.userId}`,
+        });
+      }
       return json({ success: true, member: updated });
     } catch (error) {
       return badRequest(error.message || "Unable to save profile");
@@ -314,26 +340,54 @@ async function app(request, env) {
       await env.DB.prepare("INSERT INTO checkin_template_images (id, content_type, bytes) VALUES (?, ?, ?)").bind(id, file.type, await file.arrayBuffer()).run();
       return json({ success: true, url: `${url.origin}/v1/checkin-template/images/${id}`, size: file.size }, 201);
     }
+    if (request.method === "GET" && url.pathname === "/v1/admin/point-rules") {
+      const rules = await env.DB.prepare(`
+        SELECT id, event_type, points, award_frequency, status, rule_version, created_at, updated_at
+        FROM point_rules WHERE program_id = 'program_main'
+        ORDER BY event_type ASC, updated_at DESC
+      `).all();
+      return json({ success: true, rules: rules.results || [] });
+    }
     const body = (await readJson(request)) || {};
     if (request.method === "POST" && url.pathname === "/v1/admin/point-rules") {
       const eventType = String(body.eventType || "").trim();
       const points = Number(body.points);
       if (!eventType || !Number.isInteger(points) || points < 0)
         return badRequest("Invalid point rule");
+      const frequency = ['once', 'daily', 'per_completion'].includes(body.awardFrequency)
+        ? body.awardFrequency : 'per_completion';
+      const fixedFrequency = ['member_joined', 'registration_completed'].includes(eventType) ? 'once' : frequency;
       const ruleId = newId("pointrule");
       await env.DB.prepare(
-        `INSERT INTO point_rules (id, program_id, event_type, points, daily_limit, status, rule_version) VALUES (?, 'program_main', ?, ?, ?, ?, ?)`,
+        `INSERT INTO point_rules (id, program_id, event_type, points, daily_limit, award_frequency, status, rule_version) VALUES (?, 'program_main', ?, ?, NULL, ?, ?, ?)`,
       )
         .bind(
           ruleId,
           eventType,
           points,
-          body.dailyLimit ?? null,
+          fixedFrequency,
           body.status || "draft",
           body.ruleVersion || "v1",
         )
         .run();
       return json({ success: true, id: ruleId }, 201);
+    }
+    const ruleMatch = url.pathname.match(/^\/v1\/admin\/point-rules\/([^/]+)$/);
+    if (request.method === "POST" && ruleMatch) {
+      const eventType = String(body.eventType || "").trim();
+      const points = Number(body.points);
+      if (!eventType || !Number.isInteger(points) || points < 0) return badRequest("Invalid point rule");
+      const frequency = ['once', 'daily', 'per_completion'].includes(body.awardFrequency)
+        ? body.awardFrequency : 'per_completion';
+      const fixedFrequency = ['member_joined', 'registration_completed'].includes(eventType) ? 'once' : frequency;
+      const status = ['draft', 'active', 'paused', 'archived'].includes(body.status) ? body.status : 'draft';
+      const result = await env.DB.prepare(`
+        UPDATE point_rules
+        SET event_type = ?, points = ?, award_frequency = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND program_id = 'program_main'
+      `).bind(eventType, points, fixedFrequency, status, ruleMatch[1]).run();
+      if (!result.meta?.changes) return json({ success: false, error: "Point rule not found" }, 404);
+      return json({ success: true, id: ruleMatch[1] });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/courses") {
       const title = String(body.title || "").trim();
