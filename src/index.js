@@ -37,6 +37,16 @@ const json = (data, status = 200) =>
     },
   });
 
+const POINT_RULE_EVENTS = new Set([
+  'member_joined',
+  'registration_completed',
+  'daily_ad_checkin',
+  'share_referral',
+  'course_registered',
+  'attendance_verified',
+  'task_completed',
+]);
+
 function badRequest(message) {
   return json({ success: false, error: message }, 400);
 }
@@ -352,7 +362,7 @@ async function app(request, env) {
     if (request.method === "POST" && url.pathname === "/v1/admin/point-rules") {
       const eventType = String(body.eventType || "").trim();
       const points = Number(body.points);
-      if (!eventType || !Number.isInteger(points) || points < 0)
+      if (!POINT_RULE_EVENTS.has(eventType) || !Number.isInteger(points) || points < 0)
         return badRequest("Invalid point rule");
       const frequency = ['once', 'daily', 'per_completion'].includes(body.awardFrequency)
         ? body.awardFrequency : 'per_completion';
@@ -376,7 +386,7 @@ async function app(request, env) {
     if (request.method === "POST" && ruleMatch) {
       const eventType = String(body.eventType || "").trim();
       const points = Number(body.points);
-      if (!eventType || !Number.isInteger(points) || points < 0) return badRequest("Invalid point rule");
+      if (!POINT_RULE_EVENTS.has(eventType) || !Number.isInteger(points) || points < 0) return badRequest("Invalid point rule");
       const frequency = ['once', 'daily', 'per_completion'].includes(body.awardFrequency)
         ? body.awardFrequency : 'per_completion';
       const fixedFrequency = ['member_joined', 'registration_completed'].includes(eventType) ? 'once' : frequency;
