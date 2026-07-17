@@ -1,14 +1,22 @@
+const inviteFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("invite")) return params.get("invite");
+  const liffState = params.get("liff.state");
+  if (!liffState) return "";
+  try { return new URL(liffState, location.origin).searchParams.get("invite") || ""; }
+  catch { return ""; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
   member: null,
   tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
-  invite: new URLSearchParams(location.search).get("invite") || sessionStorage.getItem("mirabeauty_invite") || "",
+  invite: inviteFromLocation() || sessionStorage.getItem("mirabeauty_invite") || "",
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
-if (new URLSearchParams(location.search).get("invite")) sessionStorage.setItem("mirabeauty_invite", state.invite);
+if (inviteFromLocation()) sessionStorage.setItem("mirabeauty_invite", state.invite);
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
@@ -106,15 +114,9 @@ async function renderLogin() {
   $("#login").onclick = () => login().catch((e) => alert(e.message));
 }
 async function render() {
-  // 已有工作階段的會員再次從邀約 QR 進站時，重新驗證以補上尚未建立的推薦關係。
-  if (state.token && state.invite) {
-    try {
-      await login();
-      return;
-    } catch (error) {
-      alert(error.message || "無法建立推薦關係");
-    }
-  }
+  // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
+  // 不自動重導，避免某些 LINE WebView 停在載入畫面。
+  if (state.token && state.invite) return renderLogin();
   if (!state.token) return renderLogin();
   try {
     state.member = (await api("/v1/me")).member;
