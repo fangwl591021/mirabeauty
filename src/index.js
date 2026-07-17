@@ -359,6 +359,32 @@ async function app(request, env) {
       return json({ success: true, rules: rules.results || [] });
     }
     const body = (await readJson(request)) || {};
+    if (request.method === "POST" && url.pathname === "/v1/admin/point-rules/reconcile") {
+      const [members, profiles, referrals, checkins, registrations, attendance] = await env.DB.batch([
+        env.DB.prepare("SELECT id FROM platform_users WHERE status = 'active'").all(),
+        env.DB.prepare("SELECT platform_user_id FROM member_profiles WHERE profile_completed_at IS NOT NULL AND profile_completed_at != ''").all(),
+        env.DB.prepare("SELECT referrer_user_id, referred_user_id FROM referral_relationships WHERE status = 'active'").all(),
+        env.DB.prepare("SELECT platform_user_id, campaign_id, business_date FROM daily_checkins WHERE status = 'verified'").all(),
+        env.DB.prepare("SELECT platform_user_id, course_session_id FROM course_registrations WHERE status = 'registered'").all(),
+        env.DB.prepare("SELECT platform_user_id, course_session_id, id FROM attendance_records WHERE status = 'verified'").all(),
+      ]);
+      const work = [
+        ...(members.results || []).map((row) => ({ userId: row.id, eventType: "member_joined", eventReference: row.id, idempotencyKey: `member_joined:${row.id}` })),
+        ...(profiles.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "registration_completed", eventReference: row.platform_user_id, idempotencyKey: `registration_completed:${row.platform_user_id}` })),
+        ...(referrals.results || []).map((row) => ({ userId: row.referrer_user_id, eventType: "share_referral", eventReference: row.referred_user_id, idempotencyKey: `share_referral:${row.referred_user_id}`, metadata: { referredUserId: row.referred_user_id } })),
+        ...(checkins.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "daily_ad_checkin", eventReference: `${row.campaign_id}:${row.business_date}`, idempotencyKey: `daily_ad_checkin:${row.campaign_id}:${row.business_date}:${row.platform_user_id}` })),
+        ...(registrations.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "course_registered", eventReference: row.course_session_id, idempotencyKey: `course_registered:${row.course_session_id}:${row.platform_user_id}` })),
+        ...(attendance.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "attendance_verified", eventReference: row.course_session_id, idempotencyKey: `attendance_verified:${row.course_session_id}:${row.platform_user_id}`, metadata: { attendanceId: row.id } })),
+      ];
+      let awarded = 0;
+      let skipped = 0;
+      for (const award of work) {
+        const result = await awardPoints(env.DB, award);
+        if (result.awarded) awarded += 1;
+        else skipped += 1;
+      }
+      return json({ success: true, awarded, skipped, checked: work.length });
+    }
     if (request.method === "POST" && url.pathname === "/v1/admin/point-rules") {
       const eventType = String(body.eventType || "").trim();
       const points = Number(body.points);
