@@ -32,6 +32,7 @@ import {
   startAdView,
 } from "./daily-ad.js";
 import { issueWalletToken, resolveWalletToken } from "./wallet-qr.js";
+import { getMyCard, getPublicCard, saveMyCard } from "./cards.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -105,6 +106,10 @@ function normalizeTemplateImageUrl(value) {
 
 async function app(request, env) {
   const url = new URL(request.url);
+  const publicCardPath = url.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
+  if (request.method === "GET" && publicCardPath) {
+    return Response.redirect(`${url.origin}/?publicCard=${encodeURIComponent(publicCardPath[1])}`, 302);
+  }
   if (request.method === "GET" && url.pathname === "/r/checkin") {
     const target = env.LIFF_ID
       ? `https://liff.line.me/${env.LIFF_ID}?smartCheckin=1`
@@ -193,6 +198,29 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     return json({ success: true, member });
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/cards/me") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    return json({ success: true, card: await getMyCard(env.DB, member.userId) });
+  }
+
+  if (["POST", "PUT"].includes(request.method) && url.pathname === "/v1/cards/me") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const card = await saveMyCard(env.DB, member.userId, (await readJson(request)) || {}, member);
+      return json({ success: true, card }, card?.createdAt ? 200 : 201);
+    } catch (error) {
+      return badRequest(error.message || "Unable to save card");
+    }
+  }
+
+  const publicCardMatch = url.pathname.match(/^\/v1\/cards\/([^/]+)\/public$/);
+  if (request.method === "GET" && publicCardMatch) {
+    const card = await getPublicCard(env.DB, decodeURIComponent(publicCardMatch[1]));
+    return card ? json({ success: true, card }) : json({ success: false, error: "名片不存在或尚未公開" }, 404);
   }
 
   if (request.method === "PATCH" && url.pathname === "/v1/me") {
