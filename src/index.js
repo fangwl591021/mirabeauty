@@ -301,7 +301,7 @@ async function app(request, env) {
     if (request.method === "GET" && url.pathname === "/v1/admin/members") {
       const rows = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
-          mp.gender, mp.member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          mp.gender, mp.member_number, mp.company_member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
           ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
@@ -318,7 +318,7 @@ async function app(request, env) {
       const memberId = memberDetailMatch[1];
       const member = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
-          mp.gender, mp.member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
+          mp.gender, mp.member_number, mp.company_member_number, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
           ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
