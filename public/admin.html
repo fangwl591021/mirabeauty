@@ -28,6 +28,9 @@
           <button class="nav-item" data-page="courses">
             <span>▣</span> 課程／活動
           </button>
+          <button class="nav-item" data-page="calendar">
+            <span>◫</span> 課程行事曆
+          </button>
           <button class="nav-item" data-page="carousel">
             <span>▤</span> 每日輪播贈點
           </button>
@@ -208,6 +211,40 @@
           </section>
         </section>
 
+        <section class="page" data-content="calendar">
+          <section class="panel calendar-panel">
+            <div class="panel-head">
+              <div><h2>課程行事曆</h2><p>完全沿用 MLM 的月曆、活動時間窗與固定 QR 流程；活動資料直接連動現有課程與點數。</p></div>
+              <div class="calendar-actions"><button class="outline" id="calendarNew" type="button">新增活動</button><button class="outline" id="calendarRefresh" type="button">重新同步</button></div>
+            </div>
+            <div class="calendar-editor" id="calendarEditor" hidden>
+              <div class="calendar-editor-head"><strong id="calendarEditorTitle">新增活動</strong><button class="outline" id="calendarClose" type="button">收合</button></div>
+              <input id="calendarEventId" type="hidden">
+              <div class="calendar-form-grid">
+                <label>所屬課程<select id="calendarCourseId"></select></label>
+                <label>場次名稱<input id="calendarSessionTitle" placeholder="例如 7 月會員說明會"></label>
+                <label>模式<select id="calendarMode"><option value="physical">現場</option><option value="online">線上</option></select></label>
+                <label>活動日期<input id="calendarEventDate" type="date"></label>
+                <label>開始時間<input id="calendarStartsAt" type="time"></label>
+                <label>結束時間<input id="calendarEndsAt" type="time"></label>
+                <label>報名開始<input id="calendarRegistrationStartsAt" type="time"></label>
+                <label>報名結束／簽到截止<input id="calendarRegistrationEndsAt" type="time"></label>
+                <label>場地名稱<input id="calendarVenueName" placeholder="例如 台北教室"></label>
+                <label>地址／線上會議網址<input id="calendarVenueAddress" placeholder="現場地址或會議連結"></label>
+                <label>線上會議網址<input id="calendarMeetingUrl" type="url" placeholder="https://..."></label>
+                <label>現場簽到碼（修改時留空保留原碼）<input id="calendarCheckinCode" placeholder="現場掃碼或人工簽到使用"></label>
+              </div>
+              <div class="calendar-editor-actions"><button class="primary" id="calendarSave" type="button">儲存活動</button><button class="danger" id="calendarDelete" type="button">取消場次</button></div>
+              <p id="calendarEditStatus" class="muted"></p>
+            </div>
+            <div id="calendarQr" class="calendar-qr hidden"><div id="calendarQrImage"></div><div><strong>課程掃碼報名</strong><p>會員掃碼後即進入對應場次完成報名；報名成功依「課程報名」點數規則贈點。</p><input id="calendarQrUrl" readonly><button class="outline" id="calendarCopyQr" type="button">複製活動網址</button></div></div>
+            <div class="calendar-month-head"><button class="outline" id="calendarPrev" type="button">← 上月</button><strong id="calendarMonthTitle"></strong><button class="outline" id="calendarNext" type="button">下月 →</button></div>
+            <div class="calendar-week"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+            <div id="calendarMonth" class="calendar-month"></div>
+            <div id="calendarList" class="calendar-list"></div>
+          </section>
+        </section>
+
         <section class="page" data-content="carousel">
           <div class="template-section-head"><h3>簽到贈點活動模板</h3><div><span>所見即所得 LINE Flex 多頁活動卡</span><button class="template-back" data-go="dashboard">返回主控台</button></div></div>
           <article class="templateDesigner">
@@ -247,6 +284,7 @@
         </section>
       </main>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script type="module" src="/admin.js"></script>
   </body>
 </html>
