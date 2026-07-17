@@ -36,10 +36,12 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const dailyHeader = `<header class="hero member-hero daily-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(state.daily?.campaign?.name || "簽到贈點活動")}</h1><p>向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。</p></div></header>`;
-  const memberHeader = state.tab === "home" ? "" : state.tab === "daily" ? dailyHeader : `<header class="hero member-hero">${avatar()}<div><h1>MiraBeauty 會員中心</h1><p>${esc(state.member?.displayName || "LINE 會員")}，歡迎回來</p></div></header>`;
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], profile:["我的名片","管理你的會員資料與個人資訊。"] };
+  const [featureTitle,featureHint] = featureCopy[state.tab] || ["MiraBeauty 會員中心","會員服務與活動入口。"];
+  const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div></header>`;
+  const memberHeader = state.tab === "home" ? "" : featureHeader;
   $("#app").innerHTML =
-    `${memberHeader}<div class="content">${body}</div><nav class="nav">${[
+    `${memberHeader}<div class="content">${state.tab === "home" ? "" : portalMenu()}${body}</div><nav class="nav">${[
       ["home", "首頁"],
       ["wallet", "錢包"],
       ["courses", "課程"],
@@ -58,6 +60,7 @@ function layout(body) {
         render();
       }),
   );
+  bindPortalActions();
 }
 async function login() {
   if (!state.config.liffId) throw new Error("尚未設定 LIFF_ID");
@@ -112,13 +115,12 @@ async function render() {
   return home();
 }
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">▣</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">♜</i><span>簽到贈點</span></button><button data-home-action="profile"><i class="portal-menu-icon pink">▤</i><span>我的名片</span></button><button data-home-action="walletqr"><i class="portal-menu-icon violet">◎</i><span>錢包 QR</span></button><button data-home-action="home"><i class="portal-menu-icon green">⌂</i><span>首頁</span></button></section>`;
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function home() {
   const wallet = await api("/v1/points/wallet");
   layout(
     `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>點數錢包</span><strong>${format(wallet.wallet.balance)}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame"><iframe title="MiraBeauty 官網" src="https://mirabeauty.com.tw/about" loading="lazy"></iframe></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">複製邀約連結</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
-  bindPortalActions();
 }
 async function invite() {
   return api("/v1/invite-links", { method: "POST", body: "{}" });
@@ -219,9 +221,8 @@ async function daily() {
     return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}"><div class="daily-slide-head"><span>第 ${index + 1} 頁</span><span>${completed.has(creative.id) ? "已完成" : "待觀看"}</span></div>${cardLink ? `<a target="_blank" rel="noopener" href="${esc(cardLink)}">${media}</a>` : media}<div class="daily-slide-body"><p class="muted">需保持本頁可見至少 ${creative.required_watch_seconds} 秒。</p><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${completed.has(creative.id) ? "已完成" : "開始觀看"}</button><p class="muted watch-status"></p>${buttons}</div></article>`;
   };
   layout(
-    `${portalMenu()}<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
+    `<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
-  bindPortalActions();
   document.querySelectorAll("[data-watch]").forEach((button) => {
     button.onclick = () => {
       const creative = r.creatives.find((item) => item.id === button.dataset.watch);
