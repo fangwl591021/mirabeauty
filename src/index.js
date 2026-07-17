@@ -17,6 +17,7 @@ import { awardPoints, getWallet } from "./points.js";
 import {
   cancelCalendarSession,
   checkInToSession,
+  smartCheckInToActiveSession,
   listAdminCourses,
   listCalendarSessions,
   listMyCourseSessions,
@@ -758,6 +759,14 @@ async function app(request, env) {
     return result.ok
       ? json({ success: true, ...result }, result.duplicate ? 200 : 201)
       : badRequest(result.reason);
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/course-sessions/smart-check-in") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    const body = (await readJson(request)) || {};
+    const result = await smartCheckInToActiveSession(env.DB, { userId: member.userId, latitude: body.latitude, longitude: body.longitude, accuracy: body.accuracy });
+    return result.ok ? json({ success: true, ...result }, result.duplicate ? 200 : 201) : badRequest(result.reason);
   }
 
   if (request.method === "POST" && url.pathname === "/v1/invite-links") {
