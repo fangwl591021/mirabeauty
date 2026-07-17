@@ -156,24 +156,16 @@ async function render() {
   if (state.tab === "profile") return profile();
   return home();
 }
-const smartCheckinReason = { location_required:"需要允許手機定位才能完成現場簽到。", no_active_session:"目前沒有可報到的現場活動，請確認報到時間。", venue_not_configured:"此活動尚未設定場地座標，請洽現場人員。", outside_venue:"目前位置不在活動場地簽到範圍內。", registration_required:"尚未報名此場活動，無法完成簽到。", session_unavailable:"此場活動目前無法簽到。" };
-function readLocation() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("此裝置不支援定位"));
-    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy:true, timeout:15000, maximumAge:0 });
-  });
-}
+const smartCheckinReason = { no_active_session:"目前沒有可報到的活動，請確認報到時間。", registration_required:"尚未報名此場活動，無法完成簽到。", session_unavailable:"此場活動目前無法簽到。" };
 async function smartCheckin() {
   state.tab = "courses";
-  layout('<section class="card smart-checkin-result"><h2>智慧簽到驗證中</h2><p class="muted">正在確認你的報名資格、報到時間與活動地點…</p></section>');
+  layout('<section class="card smart-checkin-result"><h2>智慧簽到驗證中</h2><p class="muted">正在確認你的報名資格、報到時間與活動場次…</p></section>');
   try {
-    let location = {};
-    try { const position = await readLocation(); location = { latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy }; } catch (error) { location = {}; }
-    const result = await api("/v1/course-sessions/smart-check-in", { method:"POST", body:JSON.stringify(location) });
+    const result = await api("/v1/course-sessions/smart-check-in", { method:"POST", body:"{}" });
     const message = result.duplicate ? "你已完成本場簽到，無需重複報到。" : "簽到成功，課程簽到點數已依規則入帳。";
-    layout(`<section class="card smart-checkin-result success"><h2>✓ ${message}</h2><p class="muted">已完成報名資格、報到時間與現場位置驗證。</p><button class="btn" id="backCourses">查看課程紀錄</button></section>`);
+    layout(`<section class="card smart-checkin-result success"><h2>✓ ${message}</h2><p class="muted">已完成報名資格、報到時間與活動場次驗證。</p><button class="btn" id="backCourses">查看課程紀錄</button></section>`);
   } catch (error) {
-    const text = smartCheckinReason[error.message] || (error.code === 1 ? "你拒絕了定位權限，無法完成現場簽到。" : error.message || "智慧簽到失敗");
+    const text = smartCheckinReason[error.message] || error.message || "智慧簽到失敗";
     layout(`<section class="card smart-checkin-result"><h2>暫時無法完成簽到</h2><p class="muted">${esc(text)}</p><button class="btn alt" id="retrySmartCheckin">重新驗證</button></section>`);
   }
   state.smartCheckin = false;
