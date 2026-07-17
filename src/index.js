@@ -291,15 +291,15 @@ async function app(request, env) {
           buttons: (Array.isArray(page.buttons) ? page.buttons : []).slice(0, 4).map((button) => ({ label: String(button.label || "").slice(0, 80), type: button.type === "uri" ? "uri" : "message", text: String(button.text || "").slice(0, 300), uri: String(button.uri || "").slice(0, 4096), color: /^#[0-9a-f]{6}$/i.test(String(button.color || "")) ? String(button.color) : "" })),
         })),
       };
-      const campaignId = "campaign_daily_template";
+      const campaignId = newId("campaign_daily_template");
       const campaignStatus = safe.active ? "active" : "paused";
       const statements = [
         env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(safe)),
-        env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status, required_creative_count = excluded.required_creative_count, rotation_mode = excluded.rotation_mode, updated_at = CURRENT_TIMESTAMP").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
-        env.DB.prepare("UPDATE ad_creatives SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE campaign_id = ?").bind(campaignId),
+        env.DB.prepare("UPDATE ad_campaigns SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%'"),
+        env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?)").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
       ];
       safe.pages.forEach((page, index) => {
-        statements.push(env.DB.prepare("INSERT INTO ad_creatives (id, campaign_id, creative_type, title, media_url, preview_url, target_url, image_link, buttons_json, bubble_size, image_aspect_ratio, image_aspect_mode, required_watch_seconds, required_completion_ratio, display_order, status) VALUES (?, ?, 'image', ?, ?, '', '', ?, ?, ?, ?, ?, 3, 0, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, media_url = excluded.media_url, image_link = excluded.image_link, buttons_json = excluded.buttons_json, bubble_size = excluded.bubble_size, image_aspect_ratio = excluded.image_aspect_ratio, image_aspect_mode = excluded.image_aspect_mode, display_order = excluded.display_order, status = excluded.status, updated_at = CURRENT_TIMESTAMP").bind(`creative_daily_template_${index + 1}`, campaignId, safe.altText, page.imageUrl, page.imageLink, JSON.stringify(page.buttons), page.bubbleSize, page.imageAspectRatio, page.imageAspectMode, index, safe.active ? "active" : "archived"));
+        statements.push(env.DB.prepare("INSERT INTO ad_creatives (id, campaign_id, creative_type, title, media_url, preview_url, target_url, image_link, buttons_json, bubble_size, image_aspect_ratio, image_aspect_mode, required_watch_seconds, required_completion_ratio, display_order, status) VALUES (?, ?, 'image', ?, ?, '', '', ?, ?, ?, ?, ?, 3, 0, ?, ?)").bind(newId("creative_daily_template"), campaignId, safe.altText, page.imageUrl, page.imageLink, JSON.stringify(page.buttons), page.bubbleSize, page.imageAspectRatio, page.imageAspectMode, index, safe.active ? "active" : "archived"));
       });
       await env.DB.batch(statements);
       return json({ success: true, template: safe, campaignId });
