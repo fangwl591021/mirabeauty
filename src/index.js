@@ -158,15 +158,15 @@ async function app(request, env) {
         eventReference: result.member.userId,
         idempotencyKey: `member_joined:${result.member.userId}`,
       });
-      if (result.referralCreated && result.member.systemReferrer?.userId) {
-        await awardPoints(env.DB, {
-          userId: result.member.systemReferrer.userId,
-          eventType: "share_referral",
-          eventReference: result.member.userId,
-          idempotencyKey: `share_referral:${result.member.userId}`,
-          metadata: { referredUserId: result.member.userId },
-        });
-      }
+    }
+    if (result.referralCreated && result.member.systemReferrer?.userId) {
+      await awardPoints(env.DB, {
+        userId: result.member.systemReferrer.userId,
+        eventType: "share_referral",
+        eventReference: result.member.userId,
+        idempotencyKey: `share_referral:${result.member.userId}`,
+        metadata: { referredUserId: result.member.userId },
+      });
     }
     const sessionToken = await createSession(
       result.member.userId,
