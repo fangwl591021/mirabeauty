@@ -215,9 +215,13 @@ export async function smartCheckInToActiveSession(db, { userId, latitude, longit
   const now = new Date().toISOString();
   const result = await db.prepare(`SELECT cs.id, cs.attendance_mode, cs.venue_latitude, cs.venue_longitude, cs.checkin_radius_meters
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    JOIN course_registrations cr ON cr.course_session_id = cs.id AND cr.platform_user_id = ? AND cr.status = 'registered'
     WHERE cs.status = 'scheduled' AND c.status = 'published'
-      AND cs.checkin_opens_at <= ? AND cs.checkin_closes_at >= ? ORDER BY cs.starts_at ASC LIMIT 1`).bind(now, now).first();
-  if (!result) return { ok: false, reason: 'no_active_session' };
+      AND cs.checkin_opens_at <= ? AND cs.checkin_closes_at >= ? ORDER BY cs.starts_at ASC LIMIT 1`).bind(userId, now, now).first();
+  if (!result) {
+    const active = await db.prepare(`SELECT 1 FROM course_sessions cs JOIN courses c ON c.id = cs.course_id WHERE cs.status = 'scheduled' AND c.status = 'published' AND cs.checkin_opens_at <= ? AND cs.checkin_closes_at >= ? LIMIT 1`).bind(now, now).first();
+    return { ok: false, reason: active ? 'registration_required' : 'no_active_session' };
+  }
   if (result.attendance_mode === 'physical' && !bypassLocation) {
     if (!Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) return { ok: false, reason: 'location_required' };
     if (!Number(result.venue_latitude) || !Number(result.venue_longitude)) return { ok: false, reason: 'venue_not_configured' };
