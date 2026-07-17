@@ -3,7 +3,7 @@ import { newId } from './member-repository.js';
 const CARD_COLUMNS = `
   id, platform_user_id, display_name, english_name, company_name, job_title, department,
   mobile, company_phone, email, website_url, line_url, address, service_description,
-  cover_url, buttons_json, status, created_at, updated_at
+  cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
 `;
 
 const text = (value, length) => String(value || '').trim().slice(0, length);
@@ -24,10 +24,11 @@ function normaliseButtons(value) {
     let target = text(item?.value, 2048);
     if (!label || !target) return null;
     if (type === 'phone') {
-      const phone = target.replace(/[\s()-]/g, '');
+      const phone = target.replace(/^tel:/i, '').replace(/[\s()-]/g, '');
       if (!/^[+0-9]{6,24}$/.test(phone)) throw new Error(`第 ${index + 1} 個按鈕的電話格式不正確`);
       target = `tel:${phone}`;
     } else if (type === 'email') {
+      target = target.replace(/^mailto:/i, '');
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)) throw new Error(`第 ${index + 1} 個按鈕的 Email 格式不正確`);
       target = `mailto:${target}`;
     } else if (type === 'map') {
@@ -39,10 +40,38 @@ function normaliseButtons(value) {
   }).filter(Boolean);
 }
 
+const CARD_VERSIONS = ['standard', 'full', 'square'];
+const VERSION_LAYOUT = { standard: 'landscape', full: 'portrait', square: 'square' };
+function parseVersions(row) {
+  let input = {};
+  try { input = JSON.parse(row.versions_json || '{}'); } catch { input = {}; }
+  let legacyButtons = [];
+  try { legacyButtons = JSON.parse(row.buttons_json || '[]'); } catch { legacyButtons = []; }
+  const result = {};
+  CARD_VERSIONS.forEach((version) => {
+    const source = input?.[version] || {};
+    result[version] = {
+      coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048),
+      title: text(source.title, 120),
+      description: text(source.description, 1600),
+      buttons: normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : [])),
+      layout: VERSION_LAYOUT[version],
+    };
+  });
+  return result;
+}
+
+function normaliseVersions(value, row = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const patched = { ...row, versions_json: JSON.stringify(source) };
+  return parseVersions(patched);
+}
+
 function cardFromRow(row, publicView = false) {
   if (!row) return null;
-  let buttons = [];
-  try { buttons = JSON.parse(row.buttons_json || '[]'); } catch { buttons = []; }
+  const versions = parseVersions(row);
+  const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard';
+  const selected = versions[selectedVersion] || versions.standard;
   const card = {
     id: row.id,
     displayName: row.display_name,
@@ -57,8 +86,10 @@ function cardFromRow(row, publicView = false) {
     lineUrl: row.line_url,
     address: row.address,
     serviceDescription: row.service_description,
-    coverUrl: row.cover_url,
-    buttons: Array.isArray(buttons) ? buttons.filter((button) => button?.enabled !== false) : [],
+    coverUrl: selected.coverUrl,
+    buttons: selected.buttons.filter((button) => button?.enabled !== false),
+    selectedVersion,
+    versions,
     status: row.status,
     updatedAt: row.updated_at,
   };
@@ -87,27 +118,30 @@ export async function saveMyCard(db, userId, payload, member) {
     lineUrl: normaliseUrl(payload.lineUrl, 'LINE 連結'),
     address: text(payload.address, 300),
     serviceDescription: text(payload.serviceDescription, 1600),
-    coverUrl: normaliseUrl(payload.coverUrl, '名片封面圖片'),
-    buttons: normaliseButtons(payload.buttons),
+    selectedVersion: CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing?.selectedVersion || 'standard'),
+    versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
     status: ['draft', 'published'].includes(payload.status) ? payload.status : 'published',
   };
   const id = existing?.id || newId('card');
+  const selected = values.versions[values.selectedVersion] || values.versions.standard;
   await db.prepare(`
     INSERT INTO personal_cards (
       id, platform_user_id, display_name, english_name, company_name, job_title, department,
       mobile, company_phone, email, website_url, line_url, address, service_description,
-      cover_url, buttons_json, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cover_url, buttons_json, selected_version, versions_json, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(platform_user_id) DO UPDATE SET
       display_name = excluded.display_name, english_name = excluded.english_name,
       company_name = excluded.company_name, job_title = excluded.job_title, department = excluded.department,
       mobile = excluded.mobile, company_phone = excluded.company_phone, email = excluded.email,
       website_url = excluded.website_url, line_url = excluded.line_url, address = excluded.address,
       service_description = excluded.service_description, cover_url = excluded.cover_url,
-      buttons_json = excluded.buttons_json, status = excluded.status, updated_at = CURRENT_TIMESTAMP
+      buttons_json = excluded.buttons_json, selected_version = excluded.selected_version,
+      versions_json = excluded.versions_json, status = excluded.status, updated_at = CURRENT_TIMESTAMP
   `).bind(id, userId, values.displayName, values.englishName, values.companyName, values.jobTitle, values.department,
     values.mobile, values.companyPhone, values.email, values.websiteUrl, values.lineUrl, values.address,
-    values.serviceDescription, values.coverUrl, JSON.stringify(values.buttons), values.status).run();
+    values.serviceDescription, selected.coverUrl, JSON.stringify(selected.buttons), values.selectedVersion,
+    JSON.stringify(values.versions), values.status).run();
   return getMyCard(db, userId);
 }
 
