@@ -167,8 +167,9 @@ async function smartCheckin() {
   state.tab = "courses";
   layout('<section class="card smart-checkin-result"><h2>智慧簽到驗證中</h2><p class="muted">正在確認你的報名資格、報到時間與活動地點…</p></section>');
   try {
-    const position = await readLocation();
-    const result = await api("/v1/course-sessions/smart-check-in", { method:"POST", body:JSON.stringify({ latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy }) });
+    let location = {};
+    try { const position = await readLocation(); location = { latitude:position.coords.latitude, longitude:position.coords.longitude, accuracy:position.coords.accuracy }; } catch (error) { location = {}; }
+    const result = await api("/v1/course-sessions/smart-check-in", { method:"POST", body:JSON.stringify(location) });
     const message = result.duplicate ? "你已完成本場簽到，無需重複報到。" : "簽到成功，課程簽到點數已依規則入帳。";
     layout(`<section class="card smart-checkin-result success"><h2>✓ ${message}</h2><p class="muted">已完成報名資格、報到時間與現場位置驗證。</p><button class="btn" id="backCourses">查看課程紀錄</button></section>`);
   } catch (error) {
