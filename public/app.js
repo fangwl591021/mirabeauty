@@ -6,17 +6,27 @@ const inviteFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("invite") || ""; }
   catch { return ""; }
 };
+const courseSessionFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("courseSession")) return params.get("courseSession");
+  const liffState = params.get("liff.state");
+  if (!liffState) return "";
+  try { return new URL(liffState, location.origin).searchParams.get("courseSession") || ""; }
+  catch { return ""; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
   member: null,
   tab: new URLSearchParams(location.search).get("tab") === "daily" ? "daily" : "home",
   invite: inviteFromLocation() || sessionStorage.getItem("mirabeauty_invite") || "",
+  courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
   daily: null,
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
 if (inviteFromLocation()) sessionStorage.setItem("mirabeauty_invite", state.invite);
+if (courseSessionFromLocation()) sessionStorage.setItem("mirabeauty_course_session", state.courseSession);
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
@@ -105,6 +115,7 @@ async function login() {
   localStorage.setItem("mirabeauty_session", state.token);
   state.member = r.member;
   sessionStorage.removeItem("mirabeauty_invite");
+  if (state.courseSession) state.tab = "courses";
   history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
 }
@@ -126,6 +137,7 @@ async function render() {
     return renderLogin();
   }
   if (!state.member.profileCompletedAt) return profile(true);
+  if (state.courseSession) state.tab = "courses";
   if (state.tab === "wallet") return wallet();
   if (state.tab === "courses") return courses();
   if (state.tab === "daily") return daily();
@@ -193,6 +205,20 @@ async function courses() {
     api("/v1/courses/my"),
   ]);
   const registered = new Set(mine.sessions.map((x) => x.sessionId));
+  let scanNotice = "";
+  if (state.courseSession) {
+    const target = all.sessions.find((session) => session.sessionId === state.courseSession);
+    if (target && !registered.has(target.sessionId)) {
+      try {
+        const result = await api(`/v1/course-sessions/${encodeURIComponent(target.sessionId)}/register`, { method:"POST", body:JSON.stringify({source:"calendar_qr"}) });
+        registered.add(target.sessionId);
+        scanNotice = result.duplicate ? "此課程已完成報名。" : `已完成「${target.title || target.courseTitle}」掃碼報名；點數將依課程報名規則入帳。`;
+      } catch (error) { scanNotice = `掃碼報名失敗：${error.message}`; }
+    } else if (!target) scanNotice = "此活動不存在或已下架。";
+    state.courseSession = "";
+    sessionStorage.removeItem("mirabeauty_course_session");
+    history.replaceState({}, "", `${location.pathname}?tab=courses`);
+  }
   const cards = all.sessions.length
     ? all.sessions
         .map(
@@ -201,7 +227,7 @@ async function courses() {
         )
         .join("")
     : '<div class="card muted">目前沒有公開課程</div>';
-  layout(`<h2>課程活動</h2>${cards}`);
+  layout(`<h2>課程活動</h2>${scanNotice ? `<div class="notice">${esc(scanNotice)}</div>` : ""}${cards}`);
   document.querySelectorAll("[data-register]").forEach(
     (x) =>
       (x.onclick = async () => {
@@ -381,7 +407,7 @@ async function profile(required = false) {
         })
       ).member;
       alert(required ? "註冊完成" : "已儲存");
-      state.tab = "home";
+      state.tab = state.courseSession ? "courses" : "home";
       render();
     } catch (e) {
       alert(e.message);
