@@ -704,11 +704,14 @@ async function app(request, env) {
   if (request.method === "POST" && url.pathname === "/v1/invite-links") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const body = (await readJson(request)) || {};
-    const token = body.token || randomInviteToken();
-    try {
-      const invite = await createInviteLink(env.DB, member.userId, token);
-      const shareUrl = `${url.origin}/i/${invite.token}`;
+      const body = (await readJson(request)) || {};
+      const token = body.token || randomInviteToken();
+      try {
+        const invite = await createInviteLink(env.DB, member.userId, token);
+      // 必須用 LIFF URL 開啟，才能使用 requestFriendship() 的原生加好友視窗。
+      const shareUrl = env.LIFF_ID
+        ? `https://liff.line.me/${env.LIFF_ID}?invite=${encodeURIComponent(invite.token)}`
+        : `${url.origin}/i/${invite.token}`;
       return json(
         {
           success: true,
@@ -730,9 +733,11 @@ async function app(request, env) {
     const inviteToken = decodeURIComponent(url.pathname.slice(3));
     if (!inviteToken || inviteToken.length > 512)
       return new Response("Invalid invite link", { status: 400 });
-    const loginUrl = new URL("/", url.origin);
+    // 舊版 QR 仍導向 LIFF URL，避免被當成一般內嵌瀏覽器開啟。
+    const loginUrl = env.LIFF_ID
+      ? new URL(`https://liff.line.me/${env.LIFF_ID}`)
+      : new URL("/", url.origin);
     loginUrl.searchParams.set("invite", inviteToken);
-    loginUrl.searchParams.set("oa", "https://lin.ee/sV9xDLr");
     return Response.redirect(loginUrl.toString(), 302);
   }
 
