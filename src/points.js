@@ -29,13 +29,25 @@ export async function awardPoints(db, { userId, eventType, eventReference, idemp
   if (existing) return { awarded: false, duplicate: true, entry: existing };
 
   const rule = await db.prepare(`
-    SELECT id, points, daily_limit FROM point_rules
+    SELECT id, points, daily_limit, award_frequency FROM point_rules
     WHERE program_id = ? AND event_type = ? AND status = 'active'
     ORDER BY created_at DESC LIMIT 1
   `).bind(MAIN_PROGRAM_ID, eventType).first();
   if (!rule || Number(rule.points) <= 0) return { awarded: false, reason: 'no_active_rule' };
 
-  if (rule.daily_limit !== null && rule.daily_limit !== undefined) {
+  const frequency = ['once', 'daily', 'per_completion'].includes(rule.award_frequency)
+    ? rule.award_frequency
+    : 'per_completion';
+  if (frequency === 'once') {
+    const existingAward = await db.prepare(`
+      SELECT id FROM point_ledger_entries
+      WHERE platform_user_id = ? AND event_type = ? AND status = 'posted'
+      LIMIT 1
+    `).bind(userId, eventType).first();
+    if (existingAward) return { awarded: false, reason: 'once_only_reached' };
+  }
+
+  if (frequency === 'daily' || (rule.daily_limit !== null && rule.daily_limit !== undefined)) {
     const count = await db.prepare(`
       SELECT COUNT(*) AS count FROM point_ledger_entries
       WHERE platform_user_id = ? AND point_rule_id = ? AND status = 'posted'
