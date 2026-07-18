@@ -651,6 +651,9 @@ async function card() {
     } catch (error) { alert(error.message); } };
   }
   if (view === "digital") {
+    const selected = state.cardVersion && cardVersionMeta[state.cardVersion]
+      ? { id:state.cardVersion, ...(myCard.versions?.[state.cardVersion] || {}), ...cardVersionMeta[state.cardVersion] }
+      : activeCardVersion(myCard);
     new QRCode($("#cardPublicQr"), { text:cardPublicUrl(myCard.id), width:190, height:190 });
     $("#copyCardUrl").onclick = async () => { await navigator.clipboard.writeText(cardPublicUrl(myCard.id)); alert("名片網址已複製"); };
     $("#sharePersonalCard").onclick = () => sharePersonalCard(myCard).catch((error) => alert(error.message));
