@@ -65,6 +65,18 @@ function defaultCardButtons(card = {}) {
 
 const CARD_VERSIONS = ['standard', 'full', 'square'];
 const VERSION_LAYOUT = { standard: 'landscape', full: 'portrait', square: 'square' };
+
+// 舊名片可能只留下電話一個按鈕；在使用者首次儲存新版設定前補齊三個預設入口。
+// buttonDefaultsSeeded=true 之後，使用者自行刪除的按鈕不會被自動加回。
+function seedDefaultButtons(buttons, defaults, seeded) {
+  if (seeded) return buttons;
+  const result = [...buttons];
+  for (const fallback of defaults) {
+    if (result.some((item) => item.type === fallback.type || item.label === fallback.label)) continue;
+    result.push(fallback);
+  }
+  return result.slice(0, 4);
+}
 function parseVersions(row) {
   let input = {};
   try { input = JSON.parse(row.versions_json || '{}'); } catch { input = {}; }
@@ -80,14 +92,17 @@ function parseVersions(row) {
   });
   CARD_VERSIONS.forEach((version) => {
     const source = input?.[version] || {};
-    const buttons = normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : []));
+    const storedButtons = normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : []));
+    const buttonDefaultsSeeded = source.buttonDefaultsSeeded === true;
+    const buttons = seedDefaultButtons(storedButtons, defaults, buttonDefaultsSeeded);
     result[version] = {
       coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048),
       title: text(source.title, 120),
       description: text(source.description, 1600),
       serviceTextAlign: normaliseTextAlign(source.serviceTextAlign),
       descriptionTextAlign: normaliseTextAlign(source.descriptionTextAlign),
-      buttons: buttons.length ? buttons : defaults,
+      buttons,
+      buttonDefaultsSeeded,
       layout: VERSION_LAYOUT[version],
     };
   });
