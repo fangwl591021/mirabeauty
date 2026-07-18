@@ -21,20 +21,38 @@ function randomToken() {
   );
 }
 
-async function activeCampaign(db) {
-  return db
+async function activeCampaigns(db) {
+  const result = await db
     .prepare(
       `
     SELECT id, name, required_creative_count, rotation_mode FROM ad_campaigns
     WHERE status = 'active' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP
-    ORDER BY CASE WHEN id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+      AND (id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%')
+    ORDER BY updated_at DESC, id ASC
   `,
     )
-    .first();
+    .all();
+  return result.results || [];
 }
 
-export async function getDailyAdCampaign(db, userId) {
-  const campaign = await activeCampaign(db);
+async function activeCampaign(db, campaignId = "") {
+  const campaigns = await activeCampaigns(db);
+  if (campaignId) return campaigns.find((campaign) => campaign.id === campaignId) || null;
+  return campaigns[0] || null;
+}
+
+export async function listDailyAdCampaigns(db) {
+  const campaigns = await activeCampaigns(db);
+  return campaigns.map((campaign) => ({
+    id: campaign.id,
+    name: campaign.name || "今日簽到",
+    requiredCreativeCount: Number(campaign.required_creative_count || 1),
+    rotationMode: campaign.rotation_mode || "sequential",
+  }));
+}
+
+export async function getDailyAdCampaign(db, userId, campaignId = "") {
+  const campaign = await activeCampaign(db, campaignId);
   if (!campaign) return null;
   const creativeResult = await db
     .prepare(
@@ -100,8 +118,8 @@ export async function getDailyAdCampaign(db, userId) {
   };
 }
 
-export async function startAdView(db, userId, creativeId) {
-  const campaign = await activeCampaign(db);
+export async function startAdView(db, userId, creativeId, campaignId = "") {
+  const campaign = await activeCampaign(db, campaignId);
   if (!campaign) return { ok: false, reason: "no_active_campaign" };
   const creative = await db
     .prepare(
@@ -217,15 +235,15 @@ export async function recordAdViewProgress(
   };
 }
 
-export async function checkInDailyAd(db, userId) {
-  const campaign = await activeCampaign(db);
+export async function checkInDailyAd(db, userId, campaignId = "") {
+  const campaign = await activeCampaign(db, campaignId);
   if (!campaign) return { ok: false, reason: "no_active_campaign" };
   const date = businessDate();
   const alreadyCheckedIn = await db
     .prepare(
-      "SELECT id FROM daily_checkins WHERE platform_user_id = ? AND business_date = ? AND status = 'verified' LIMIT 1",
+      "SELECT id FROM daily_checkins WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND status = 'verified' LIMIT 1",
     )
-    .bind(userId, date)
+    .bind(userId, campaign.id, date)
     .first();
   if (alreadyCheckedIn) return { ok: true, duplicate: true };
   const qualifying = await db
