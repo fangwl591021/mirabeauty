@@ -436,3 +436,20 @@ body.template-page{background:#f5f7fb;overflow:auto}body.template-page .sidebar,
 .templateBlockHead > div{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #templateGroupSelect{min-width:180px;max-width:240px;height:42px;padding:0 34px 0 12px;border:1px solid #b6e5c5;border-radius:9px;background:#fff;color:#075f32;font-weight:700}
 #templateNewGroup{white-space:nowrap}
+
+
+/* 簽到活動標籤目錄 */
+.templateDirectory{margin:14px 0 12px;padding:12px;border:1px solid #bce5cb;border-radius:10px;background:#f8fffa}
+.templateDirectoryHead{display:flex;align-items:baseline;gap:9px;justify-content:space-between;margin-bottom:9px}
+.templateDirectoryHead strong{color:#075f32;font-size:15px}
+.templateDirectoryHead span{color:#5d7d6b;font-size:12px}
+.templateDirectoryList{display:grid;gap:7px}
+.templateDirectoryRow{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:7px;padding:8px;border:1px solid #d9eee0;border-radius:8px;background:#fff}
+.templateDirectoryRow.active{border-color:#46b97a;background:#effcf4}
+.templateDirectoryRow input{min-width:0;height:34px;padding:0 9px;border:1px solid #cfe3d7;border-radius:7px;font:inherit}
+.templateDirectoryRow button{height:34px;padding:0 10px;border-radius:7px;font-weight:800;cursor:pointer}
+.templateDirectoryRow .templateDirEdit{border:1px solid #b5e6c7;background:#effcf4;color:#087c3d}
+.templateDirectoryRow .templateDirDelete{border:1px solid #f1c3cb;background:#fff7f8;color:#c13f57}
+.templateDirectoryRow .templateDirDelete:disabled{opacity:.45;cursor:not-allowed}
+.templateDirectoryRow .templateDirDraft{color:#9a6b1c;font-size:12px;font-weight:800}
+@media(max-width:650px){.templateDirectoryHead{align-items:flex-start;flex-direction:column}.templateDirectoryRow{grid-template-columns:minmax(0,1fr) auto auto}.templateDirectoryRow .templateDirDraft{display:none}}
