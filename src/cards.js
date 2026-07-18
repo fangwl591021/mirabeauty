@@ -86,6 +86,7 @@ function parseVersions(row) {
       title: text(source.title, 120),
       description: text(source.description, 1600),
       serviceTextAlign: normaliseTextAlign(source.serviceTextAlign),
+      descriptionTextAlign: normaliseTextAlign(source.descriptionTextAlign),
       buttons: buttons.length ? buttons : defaults,
       layout: VERSION_LAYOUT[version],
     };
@@ -119,6 +120,7 @@ function cardFromRow(row, publicView = false) {
     address: row.address,
     serviceDescription: row.service_description || DEFAULT_SERVICE_DESCRIPTION,
     serviceTextAlign: normaliseTextAlign(selected.serviceTextAlign),
+    descriptionTextAlign: normaliseTextAlign(selected.descriptionTextAlign),
     coverUrl: selected.coverUrl,
     buttons: selected.buttons.filter((button) => button?.enabled !== false),
     selectedVersion,
