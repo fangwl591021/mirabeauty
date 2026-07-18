@@ -625,6 +625,7 @@ async function resumePendingCardShare() {
     // 清除舊 token 後由下一次載入重新登入，讓 SDK 取得新的 OTT/權限。
     if (/not allowed|not available|shareTargetPicker/i.test(String(error?.message || ""))) {
       alert("LINE 分享權限已更新，將重新登入後再開啟通訊錄。");
+      redirectedToLogin = true; // 保留 pendingCardShareId，重載後會自動續接分享。
       try { if (liff.isLoggedIn()) liff.logout(); } catch {}
       location.replace(cleanLiffRedirectUrl());
       return;
