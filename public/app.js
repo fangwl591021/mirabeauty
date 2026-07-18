@@ -45,6 +45,31 @@ const state = {
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
+// LIFF 的 OAuth code 僅能兌換一次。整個頁面生命週期只能初始化一次，
+// 否則在名片分享時再次 init 會重新使用網址上殘留的 code，導致
+// "invalid authorization code" 而無法開啟分享對象選擇器。
+let liffInitPromise = null;
+function cleanLiffRedirectUrl() {
+  const current = new URL(location.href);
+  const encodedState = current.searchParams.get("liff.state");
+  let redirect = current;
+  if (encodedState) {
+    try { redirect = new URL(encodedState, location.origin); } catch { /* retain current URL */ }
+  }
+  ["code", "state", "scope", "error", "error_description", "liff.state", "liff.referrer"].forEach((key) => redirect.searchParams.delete(key));
+  return redirect.toString();
+}
+async function initLiffOnce() {
+  if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
+  if (!window.liff) throw new Error("LINE LIFF 尚未載入，請從 LINE 重新開啟會員中心");
+  if (!liffInitPromise) {
+    liffInitPromise = liff.init({ liffId: state.config.liffId }).catch((error) => {
+      liffInitPromise = null;
+      throw error;
+    });
+  }
+  await liffInitPromise;
+}
 if (inviteFromLocation()) sessionStorage.setItem("mirabeauty_invite", state.invite);
 if (courseSessionFromLocation()) sessionStorage.setItem("mirabeauty_course_session", state.courseSession);
 if (smartCheckinFromLocation()) sessionStorage.setItem("mirabeauty_smart_checkin", "1");
@@ -104,10 +129,9 @@ function layout(body) {
   bindPortalActions();
 }
 async function login() {
-  if (!state.config.liffId) throw new Error("尚未設定 LIFF_ID");
-  await liff.init({ liffId: state.config.liffId });
+  await initLiffOnce();
   if (!liff.isLoggedIn()) {
-    liff.login({ redirectUri: location.href });
+    liff.login({ redirectUri: cleanLiffRedirectUrl() });
     return;
   }
   // Full-size LIFF 的原生加好友視窗：不離開目前登入流程。
@@ -530,10 +554,9 @@ async function openCardCropper(file, versionId) {
   $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#my-v1-img-url") || $("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); close(); alert("圖片已裁切並上傳，請按儲存名片設定"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
 }
 async function prepareCardLiff() {
-  if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
-  await liff.init({ liffId: state.config.liffId });
+  await initLiffOnce();
   if (!liff.isLoggedIn()) {
-    liff.login({ redirectUri: location.href });
+    liff.login({ redirectUri: cleanLiffRedirectUrl() });
     return false;
   }
   return true;
