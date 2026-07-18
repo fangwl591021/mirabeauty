@@ -45,6 +45,23 @@ function normaliseButtons(value) {
   }).filter(Boolean);
 }
 
+// 新名片的三個基本入口。資料未填時仍保留按鈕，統一導向 Google，
+// 讓使用者先能看到完整名片結構，之後在「編輯內容」補上資料即可。
+function defaultCardButtons(card = {}) {
+  const phone = text(card.mobile || card.companyPhone, 40).replace(/[\s()-]/g, '');
+  const lineUrl = text(card.lineUrl, 2048);
+  const address = text(card.address, 300);
+  const website = text(card.websiteUrl, 2048);
+  const googleUrl = 'https://www.google.com/';
+  return normaliseButtons([
+    { label: '撥打電話', type: phone ? 'phone' : 'url', value: phone ? `tel:${phone}` : googleUrl, color: '#B96072' },
+    { label: '加入 LINE 好友', type: lineUrl ? 'line' : 'url', value: lineUrl || googleUrl, color: '#B96072' },
+    address
+      ? { label: '店家地址', type: 'map', value: address, color: '#8D6A54' }
+      : { label: '官方網站', type: 'url', value: website || googleUrl, color: '#8D6A54' },
+  ]);
+}
+
 const CARD_VERSIONS = ['standard', 'full', 'square'];
 const VERSION_LAYOUT = { standard: 'landscape', full: 'portrait', square: 'square' };
 function parseVersions(row) {
@@ -53,13 +70,21 @@ function parseVersions(row) {
   let legacyButtons = [];
   try { legacyButtons = JSON.parse(row.buttons_json || '[]'); } catch { legacyButtons = []; }
   const result = {};
+  const defaults = defaultCardButtons({
+    mobile: row.mobile,
+    companyPhone: row.company_phone,
+    lineUrl: row.line_url,
+    address: row.address,
+    websiteUrl: row.website_url,
+  });
   CARD_VERSIONS.forEach((version) => {
     const source = input?.[version] || {};
+    const buttons = normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : []));
     result[version] = {
       coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048),
       title: text(source.title, 120),
       description: text(source.description, 1600),
-      buttons: normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : [])),
+      buttons: buttons.length ? buttons : defaults,
       layout: VERSION_LAYOUT[version],
     };
   });
@@ -127,6 +152,10 @@ export async function saveMyCard(db, userId, payload, member) {
     versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
     status: ['draft', 'published'].includes(payload.status) ? payload.status : 'published',
   };
+  const defaults = defaultCardButtons(values);
+  CARD_VERSIONS.forEach((version) => {
+    if (!values.versions[version].buttons.length) values.versions[version].buttons = defaults;
+  });
   const id = existing?.id || newId('card');
   const selected = values.versions[values.selectedVersion] || values.versions.standard;
   await db.prepare(`
