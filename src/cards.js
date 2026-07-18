@@ -5,6 +5,11 @@ const CARD_COLUMNS = `
   mobile, company_phone, email, website_url, line_url, address, service_description,
   cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
 `;
+const DEFAULT_SERVICE_DESCRIPTION = `源自對美的熱愛創立了米拉
+專注研發天然安全保養彩妝
+嚴格品質把關貼近肌膚需求
+美麗是自信與生活態度展現
+讓每次保養化為寵愛的儀式`;
 
 const text = (value, length) => String(value || '').trim().slice(0, length);
 
@@ -85,7 +90,7 @@ function cardFromRow(row, publicView = false) {
     websiteUrl: row.website_url,
     lineUrl: row.line_url,
     address: row.address,
-    serviceDescription: row.service_description,
+    serviceDescription: row.service_description || DEFAULT_SERVICE_DESCRIPTION,
     coverUrl: selected.coverUrl,
     buttons: selected.buttons.filter((button) => button?.enabled !== false),
     selectedVersion,
@@ -117,7 +122,7 @@ export async function saveMyCard(db, userId, payload, member) {
     websiteUrl: normaliseUrl(payload.websiteUrl, '公司網站'),
     lineUrl: normaliseUrl(payload.lineUrl, 'LINE 連結'),
     address: text(payload.address, 300),
-    serviceDescription: text(payload.serviceDescription, 1600),
+    serviceDescription: text(payload.serviceDescription || existing?.serviceDescription || DEFAULT_SERVICE_DESCRIPTION, 1600),
     selectedVersion: CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing?.selectedVersion || 'standard'),
     versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
     status: ['draft', 'published'].includes(payload.status) ? payload.status : 'published',
