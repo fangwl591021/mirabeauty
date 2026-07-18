@@ -517,20 +517,21 @@ function activeCardVersion(card) {
 }
 function cardWithVersion(card, id) {
   const version = { ...(card.versions?.[id] || {}), ...(cardVersionMeta[id] || cardVersionMeta.standard) };
-  return { ...card, selectedVersion:id, coverUrl:version.coverUrl || "", buttons:version.buttons || [], serviceDescription:version.description || card.serviceDescription, versionTitle:version.title || card.displayName, version };
+  return { ...card, selectedVersion:id, coverUrl:version.coverUrl || "", buttons:version.buttons || [], serviceDescription:version.description || card.serviceDescription, serviceTextAlign:version.serviceTextAlign || card.serviceTextAlign || "left", versionTitle:version.title || card.displayName, version };
 }
 function cardFlex(card) {
   const action = (label, uri, color = "#B96072") => ({ type:"button", style:"primary", height:"sm", color, action:{ type:"uri", label:String(label).slice(0,20), uri } });
   const version = activeCardVersion(card);
-  const fields = [
+  const metaFields = [
     card.companyName,
     [card.jobTitle, card.department].filter(Boolean).join("｜"),
-    card.serviceDescription,
   ].filter(Boolean).join("\n");
+  const serviceAlign = ({ left:"start", center:"center", right:"end" })[card.serviceTextAlign] || "start";
   const bodyContents = [
     { type:"text", text:card.versionTitle || card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", align:"center", wrap:true },
     ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm", align:"center", wrap:true }] : []),
-    ...(fields ? [{ type:"text", text:fields, size:"sm", color:"#5E5260", align:"center", wrap:true, margin:"md", maxLines:4 }] : []),
+    ...(metaFields ? [{ type:"text", text:metaFields, size:"sm", color:"#5E5260", align:"center", wrap:true, margin:"md", maxLines:2 }] : []),
+    ...(card.serviceDescription ? [{ type:"text", text:card.serviceDescription, size:"sm", color:"#5E5260", align:serviceAlign, wrap:true, margin:"md", maxLines:4 }] : []),
   ];
   const actions = cardActionItems(card).slice(0, 2);
   return {
@@ -766,7 +767,7 @@ async function card() {
   const tabs = `<div class="business-card-tabs"><button data-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button></div>`;
   let panel = "";
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(myCard)}<div class="business-card-contact-actions">${cardActionItems(myCard).map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
-  if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
+  if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label>服務文字對齊<select id="cardServiceTextAlign"><option value="left" ${myCard.serviceTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${myCard.serviceTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${myCard.serviceTextAlign === "right" ? "selected" : ""}>靠右</option></select></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
   if (view === "digital") {
     const selected = state.cardVersion && cardVersionMeta[state.cardVersion]
       ? { id:state.cardVersion, ...(myCard.versions?.[state.cardVersion] || {}), ...cardVersionMeta[state.cardVersion] }
@@ -783,7 +784,7 @@ async function card() {
         displayName: $("#cardDisplayName").value, englishName: $("#cardEnglishName").value, companyName: $("#cardCompanyName").value,
         jobTitle: $("#cardJobTitle").value, department: $("#cardDepartment").value, mobile: $("#cardMobile").value,
         companyPhone: $("#cardCompanyPhone").value, email: $("#cardEmail").value, websiteUrl: $("#cardWebsiteUrl").value,
-        lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value,
+        lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value, serviceTextAlign: $("#cardServiceTextAlign").value,
         coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), versions:myCard.versions, selectedVersion:myCard.selectedVersion, status:"published"
       }) });
       state.cardView = "contact"; alert("名片已儲存"); await card();
@@ -814,7 +815,7 @@ async function publicCard() {
     const result = await api(`/v1/cards/${encodeURIComponent(state.publicCard)}/public`);
     const shared = result.card;
     const actions = cardActionItems(shared);
-    $("#app").innerHTML = `<section class="public-card-page">${shared.coverUrl ? `<img class="public-card-cover" src="${esc(shared.coverUrl)}" alt="${esc(shared.displayName)} 的名片">` : ""}<section class="public-card-body"><h1>${esc(shared.displayName)}</h1>${shared.englishName ? `<p class="muted">${esc(shared.englishName)}</p>` : ""}<h2>${esc(shared.companyName)}</h2><p>${esc([shared.jobTitle,shared.department].filter(Boolean).join("｜"))}</p>${shared.serviceDescription ? `<p class="public-card-service">${esc(shared.serviceDescription)}</p>` : ""}${cardContactRows(shared)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div><button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section>`;
+    $("#app").innerHTML = `<section class="public-card-page">${shared.coverUrl ? `<img class="public-card-cover" src="${esc(shared.coverUrl)}" alt="${esc(shared.displayName)} 的名片">` : ""}<section class="public-card-body"><h1>${esc(shared.displayName)}</h1>${shared.englishName ? `<p class="muted">${esc(shared.englishName)}</p>` : ""}<h2>${esc(shared.companyName)}</h2><p>${esc([shared.jobTitle,shared.department].filter(Boolean).join("｜"))}</p>${shared.serviceDescription ? `<p class="public-card-service" style="text-align:${esc(shared.serviceTextAlign || "left")}">${esc(shared.serviceDescription)}</p>` : ""}${cardContactRows(shared)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div><button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section>`;
     $("#openMemberHome").onclick = () => { state.publicCard = ""; history.replaceState({}, "", location.pathname); render(); };
   } catch (error) {
     $("#app").innerHTML = `<section class="center">${esc(error.message || "找不到這張名片")}</section>`;
