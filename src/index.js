@@ -231,7 +231,6 @@ async function app(request, env) {
       const form = await request.formData();
       const file = form.get("image");
       if (!(file instanceof File)) return badRequest("請選擇圖片檔案");
-      if (file.size > 1024 * 1024) return badRequest("圖片壓縮後必須小於 1MB");
       if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) return badRequest("僅支援 JPEG、PNG、WebP 或 GIF");
       const id = newId("card_media");
       await env.DB.prepare("INSERT INTO personal_card_media (id, platform_user_id, content_type, bytes) VALUES (?, ?, ?, ?)").bind(id, member.userId, file.type, await file.arrayBuffer()).run();
