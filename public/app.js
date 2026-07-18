@@ -30,6 +30,22 @@ const publicCardFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("publicCard") || ""; }
   catch { return ""; }
 };
+const cardShareIdFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("shareCardId")) return params.get("shareCardId");
+  const liffState = params.get("liff.state");
+  if (!liffState) return "";
+  try { return new URL(liffState, location.origin).searchParams.get("shareCardId") || ""; }
+  catch { return ""; }
+};
+const cardShareModeFromLocation = () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get("share") === "1") return true;
+  const liffState = params.get("liff.state");
+  if (!liffState) return false;
+  try { return new URL(liffState, location.origin).searchParams.get("share") === "1"; }
+  catch { return false; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
@@ -39,6 +55,8 @@ const state = {
   courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
   smartCheckin: smartCheckinFromLocation() || sessionStorage.getItem("mirabeauty_smart_checkin") === "1",
   publicCard: publicCardFromLocation(),
+  cardShareId: cardShareIdFromLocation() || sessionStorage.getItem("mirabeauty_card_share_id") || "",
+  cardShareMode: cardShareModeFromLocation() || sessionStorage.getItem("mirabeauty_card_share_mode") === "1",
   courseView: "catalog",
   cardVersion: "",
   daily: null,
@@ -73,6 +91,8 @@ async function initLiffOnce() {
 if (inviteFromLocation()) sessionStorage.setItem("mirabeauty_invite", state.invite);
 if (courseSessionFromLocation()) sessionStorage.setItem("mirabeauty_course_session", state.courseSession);
 if (smartCheckinFromLocation()) sessionStorage.setItem("mirabeauty_smart_checkin", "1");
+if (cardShareIdFromLocation()) sessionStorage.setItem("mirabeauty_card_share_id", state.cardShareId);
+if (cardShareModeFromLocation()) sessionStorage.setItem("mirabeauty_card_share_mode", "1");
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
@@ -173,6 +193,7 @@ async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
   // 不自動重導，避免某些 LINE WebView 停在載入畫面。
   if (state.token && state.invite) return renderLogin();
+  if (state.cardShareMode && state.cardShareId) return shareCardFromHeader();
   if (state.publicCard) return publicCard();
   if (!state.token) return renderLogin();
   try {
@@ -464,6 +485,13 @@ async function watchCreative(creative, card) {
 function cardPublicUrl(cardId) {
   return `${location.origin}/c/${encodeURIComponent(cardId)}`;
 }
+function cardSharePickerUrl(cardId) {
+  if (!state.config?.liffId) return cardPublicUrl(cardId);
+  const url = new URL(`https://liff.line.me/${encodeURIComponent(state.config.liffId)}`);
+  url.searchParams.set("shareCardId", cardId);
+  url.searchParams.set("share", "1");
+  return url.toString();
+}
 function cardActionItems(card) {
   const actions = [];
   const push = (label, type, value) => { if (value) actions.push({ label, type, value }); };
@@ -510,7 +538,7 @@ function cardFlex(card) {
       { type:"box", layout:"vertical", flex:1, contents:[] },
       { type:"box", layout:"vertical", justifyContent:"center", backgroundColor:"#EF4444", width:"65px", height:"25px", cornerRadius:"25px", contents:[
         { type:"text", text:"分享", weight:"bold", align:"center", color:"#FFFFFF", size:"xs" }
-      ], action:{ type:"uri", label:"分享", uri:cardPublicUrl(card.id) } }
+      ], action:{ type:"uri", uri:cardSharePickerUrl(card.id) } }
     ] },
     body:{ type:"box", layout:"vertical", paddingAll:"18px", contents:bodyContents },
     footer:{ type:"box", layout:"vertical", spacing:"sm", contents:[
@@ -572,6 +600,30 @@ async function sharePersonalCard(card) {
   const result = await liff.shareTargetPicker([{ type:"flex", altText:`${card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(card) }]);
   if (result === false) throw new Error("已取消分享");
   alert("名片已送出");
+}
+function clearCardShareMode() {
+  state.cardShareId = "";
+  state.cardShareMode = false;
+  sessionStorage.removeItem("mirabeauty_card_share_id");
+  sessionStorage.removeItem("mirabeauty_card_share_mode");
+  const url = new URL(location.href);
+  url.searchParams.delete("shareCardId");
+  url.searchParams.delete("share");
+  history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+async function shareCardFromHeader() {
+  let redirectedToLogin = false;
+  try {
+    if (!await prepareCardLiff()) { redirectedToLogin = true; return; }
+    if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享功能，請在 LINE Developers 啟用 shareTargetPicker");
+    const result = await api(`/v1/cards/${encodeURIComponent(state.cardShareId)}/public`);
+    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
+    if (shared === false) return;
+  } catch (error) {
+    alert(error.message || "無法開啟名片分享通訊錄");
+  } finally {
+    if (!redirectedToLogin) clearCardShareMode();
+  }
 }
 async function sendPersonalCardToChat(card) {
   if (!await prepareCardLiff()) return;
