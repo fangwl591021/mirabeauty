@@ -826,7 +826,7 @@ async function card() {
     $("#lineSourceUpload").onclick = () => $("#lineSourceImageFile").click();
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
-    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
+    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:collectCardButtons(), buttonDefaultsSeeded:true }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
