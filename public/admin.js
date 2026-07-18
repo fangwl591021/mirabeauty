@@ -315,14 +315,22 @@ function collapsedTemplatePages(){return [...document.querySelectorAll("#templat
 function renderTemplateDirectory() {
   const directory=$("#templateGroupDirectory");
   if(!directory)return;
+  const savedCount=checkinTemplates.filter(item=>!String(item.id||"").startsWith("draft_")).length;
   directory.innerHTML=checkinTemplates.map((item,index)=>{
     const saved=!String(item.id||"").startsWith("draft_");
-    return `<div class="templateDirectoryRow ${item.id===activeCheckinTemplateId?"active":""}" data-template-id="${esc(item.id)}">
-      <input value="${esc(item.altText || `簽到活動 ${index+1}`)}" aria-label="標籤名稱" />
-      <button type="button" class="templateDirEdit" data-template-directory-action="edit">${item.id===activeCheckinTemplateId?"編輯中":"編輯"}</button>
-      <button type="button" class="templateDirRename" data-template-directory-action="rename">改名</button>
-      ${saved?`<button type="button" class="templateDirDelete" data-template-directory-action="delete" ${checkinTemplates.filter(t=>!String(t.id||"").startsWith("draft_")).length<=1?"disabled":""}>刪除</button>`:`<span class="templateDirDraft">尚未儲存</span>`}
-    </div>`;
+    const status=item.active!==false?"啟用":"停用";
+    const created=saved?"已儲存":"草稿";
+    return `<tr class="${item.id===activeCheckinTemplateId?"active":""}" data-template-id="${esc(item.id)}">
+      <td><input value="${esc(item.altText || `簽到活動 ${index+1}`)}" aria-label="標籤名稱" /></td>
+      <td>${status}</td>
+      <td>${Array.isArray(item.pages)?item.pages.length:0} 頁</td>
+      <td><span class="${saved?"":"templateDirDraft"}">${created}</span></td>
+      <td><div class="checkinDirectoryActions">
+        <button type="button" class="templateDirEdit" data-template-directory-action="edit">${item.id===activeCheckinTemplateId?"編輯中":"編輯"}</button>
+        <button type="button" class="templateDirRename" data-template-directory-action="rename">改名</button>
+        ${saved?`<button type="button" class="templateDirDelete" data-template-directory-action="delete" ${savedCount<=1?"disabled":""}>刪除</button>`:""}
+      </div></td>
+    </tr>`;
   }).join("");
 }
 function renderCheckinTemplate(template, collapsedPages=null) {
@@ -383,5 +391,5 @@ $("#templateGroupDirectory").addEventListener("click",event=>{
   if(action==="rename")return renameCheckinGroup(id,row.querySelector("input")?.value);
   if(action==="delete")return deleteCheckinGroup(id);
 });
-$("#templateGroupSelect").addEventListener("change",(event)=>{const next=checkinTemplates.find(item=>item.id===event.target.value);if(next)renderCheckinTemplate(next)});$("#templateNewGroup").addEventListener("click",()=>{const t=defaultTemplate();t.id=`draft_${Date.now()}`;t.altText=`簽到活動 ${checkinTemplates.length+1}`;checkinTemplates=[...checkinTemplates,t];renderCheckinTemplate(t,[]);templateStatus("已建立新的簽到活動，請輸入標籤名稱並設定素材後儲存。",true)});$("#templateAddPage").addEventListener("click",()=>{const t=collectTemplate(),collapsed=collapsedTemplatePages();t.pages.push(defaultPage());renderCheckinTemplate(t,collapsed);templateStatus(`已新增第 ${t.pages.length} 頁，請上傳圖片。`,true)});$("#templateSave").addEventListener("click",saveCheckinTemplate);$("#templatePages").addEventListener("input",refreshTemplatePreview);$("#templatePages").addEventListener("change",async e=>{if(e.target.matches('[data-field="colorPicker"]'))e.target.closest(".templateColorRow").querySelector('[data-field="color"]').value=e.target.value.toUpperCase();if(e.target.matches('[data-field="imageFile"]'))await uploadTemplateImage(e.target);refreshTemplatePreview()});$("#templatePages").addEventListener("click",e=>{const button=e.target.closest("[data-template-action]");if(!button)return;const t=collectTemplate(),page=button.closest(".templatePage"),i=Number(page?.dataset.pageIndex),collapsed=collapsedTemplatePages();if(button.dataset.templateAction==="add-button")t.pages[i].buttons.push(defaultButton());if(button.dataset.templateAction==="remove-page"&&i>0){t.pages.splice(i,1);renderCheckinTemplate(t,collapsed.filter(x=>x!==i).map(x=>x>i?x-1:x));return}if(button.dataset.templateAction==="remove-button"){const j=Number(button.closest(".templateButton")?.dataset.buttonIndex);if(j>=0)t.pages[i].buttons.splice(j,1)}renderCheckinTemplate(t,collapsed)});["#templateEntryUrl","#templateAltText","#templateRotationMode","#templateActive"].forEach(id=>$(id).addEventListener("input",refreshTemplatePreview));
+$("#templateGroupSelect")?.addEventListener("change",(event)=>{const next=checkinTemplates.find(item=>item.id===event.target.value);if(next)renderCheckinTemplate(next)});$("#templateNewGroup").addEventListener("click",()=>{const t=defaultTemplate();t.id=`draft_${Date.now()}`;t.altText=`簽到活動 ${checkinTemplates.length+1}`;checkinTemplates=[...checkinTemplates,t];renderCheckinTemplate(t,[]);templateStatus("已建立新的簽到活動，請輸入標籤名稱並設定素材後儲存。",true)});$("#templateAddPage").addEventListener("click",()=>{const t=collectTemplate(),collapsed=collapsedTemplatePages();t.pages.push(defaultPage());renderCheckinTemplate(t,collapsed);templateStatus(`已新增第 ${t.pages.length} 頁，請上傳圖片。`,true)});$("#templateSave").addEventListener("click",saveCheckinTemplate);$("#templatePages").addEventListener("input",refreshTemplatePreview);$("#templatePages").addEventListener("change",async e=>{if(e.target.matches('[data-field="colorPicker"]'))e.target.closest(".templateColorRow").querySelector('[data-field="color"]').value=e.target.value.toUpperCase();if(e.target.matches('[data-field="imageFile"]'))await uploadTemplateImage(e.target);refreshTemplatePreview()});$("#templatePages").addEventListener("click",e=>{const button=e.target.closest("[data-template-action]");if(!button)return;const t=collectTemplate(),page=button.closest(".templatePage"),i=Number(page?.dataset.pageIndex),collapsed=collapsedTemplatePages();if(button.dataset.templateAction==="add-button")t.pages[i].buttons.push(defaultButton());if(button.dataset.templateAction==="remove-page"&&i>0){t.pages.splice(i,1);renderCheckinTemplate(t,collapsed.filter(x=>x!==i).map(x=>x>i?x-1:x));return}if(button.dataset.templateAction==="remove-button"){const j=Number(button.closest(".templateButton")?.dataset.buttonIndex);if(j>=0)t.pages[i].buttons.splice(j,1)}renderCheckinTemplate(t,collapsed)});["#templateEntryUrl","#templateAltText","#templateRotationMode","#templateActive"].forEach(id=>$(id).addEventListener("input",refreshTemplatePreview));
 $("#copyTemplateEntry").addEventListener("click", async () => { await navigator.clipboard.writeText(dailyEntryUrl()); templateStatus("活動入口網址已複製。", true); });
