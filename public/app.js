@@ -527,7 +527,7 @@ async function openCardCropper(file, versionId) {
   await new Promise((resolve,reject) => { image.onload=resolve; image.onerror=reject; });
   cardCropper?.destroy(); cardCropper = new Cropper(image, { aspectRatio:width / height, viewMode:1, dragMode:"move", autoCropArea:.92, cropBoxMovable:true, cropBoxResizable:true, zoomable:true, zoomOnTouch:true, zoomOnWheel:true, movable:true, responsive:true, background:false, guides:true, center:true, highlight:false });
   modal.querySelectorAll("[data-crop-action]").forEach((button) => button.onclick = () => { const action=button.dataset.cropAction; if (action === "zoom-in") cardCropper.zoom(.1); if (action === "zoom-out") cardCropper.zoom(-.1); if (action === "rotate") cardCropper.rotate(90); if (action === "reset") cardCropper.reset(); });
-  $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); close(); alert("圖片已裁切並上傳，請按儲存名片設定"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
+  $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#my-v1-img-url") || $("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); close(); alert("圖片已裁切並上傳，請按儲存名片設定"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
 }
 async function prepareCardLiff() {
   if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
@@ -604,6 +604,42 @@ function renderDigitalCardPreview(card, selected) {
   holder.className = `ecard-preview-card ${esc(selected.className)}`;
   holder.innerHTML = `${coverUrl ? `<img src="${esc(coverUrl)}" alt="名片封面">` : `<div class="ecard-cover-placeholder">${avatar()}</div>`}<div class="ecard-preview-copy"><strong>${esc(title)}</strong><span>${esc(description)}</span></div>${buttons.length ? `<div class="ecard-preview-buttons">${buttons.slice(0,4).map((button) => `<span style="--button-color:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</span>`).join("")}</div>` : ""}`;
 }
+// Ported from LINE-/index.html + js/modules/mycard.js: the editor is deliberately
+// kept as its own source-shaped block, with only storage calls adapted to MiraBeauty.
+function lineSourceEcardEditor(card, selected) {
+  const version = cardWithVersion(card, selected.id);
+  return `<section id="my-ecard-edit-state" class="line-source-ecard">
+    <div class="line-source-ecard-top"><p>設定後即可在首頁一鍵發送數位名片</p><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button></div>
+    <div class="line-source-ecard-panel">
+      <div><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
+      <div class="line-source-section"><p class="line-source-label">封面圖片</p><div class="line-source-image-row"><input id="my-v1-img-url" placeholder="https://" value="${esc(version.coverUrl)}"><button type="button" id="lineSourceUpload">上傳</button><input id="lineSourceImageFile" type="file" accept="image/*" hidden></div></div>
+      <label class="line-source-field"><span>版面標題</span><input id="lineSourceTitle" value="${esc(version.versionTitle || "")}" placeholder="預設使用姓名"></label>
+      <label class="line-source-field"><span>版面說明</span><textarea id="lineSourceDescription" rows="5" placeholder="預設使用服務項目">${esc(version.serviceDescription || "")}</textarea></label>
+      <div class="line-source-buttons"><div class="line-source-buttons-head"><p class="line-source-label">底部按鈕設定</p><button type="button" id="lineSourceAddButton">＋ 新增按鈕</button></div><div id="my-v1-buttons-list"></div></div>
+      <button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button>
+    </div>
+    <aside class="line-source-preview"><p>即時預覽</p><div id="my-ecard-preview-area"></div></aside>
+    <div class="line-source-share"><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(card.id))}"><div id="cardPublicQr" class="qr"></div><button id="sharePersonalCard" type="button">分享名片</button><button id="sendPersonalCard" type="button">傳送至目前聊天室</button><button id="copyCardUrl" type="button">複製名片網址</button></div>
+  </section>`;
+}
+function renderLineSourceButtons(buttons, onChange) {
+  const holder = $("#my-v1-buttons-list"); if (!holder) return;
+  if (!buttons.length) { holder.innerHTML = `<p class="line-source-empty">尚未設定任何按鈕</p>`; return; }
+  holder.innerHTML = buttons.map((button, index) => `<article class="line-source-button" data-card-button-row><div><strong>按鈕 ${index + 1}</strong><button type="button" data-line-remove="${index}">刪除</button></div><label>按鈕顏色<span><input type="color" data-card-button-color-picker value="${esc(button.color || "#B96072")}"><input data-card-button-color value="${esc(button.color || "#B96072")}"></span></label><label>按鈕文字<input data-card-button-label value="${esc(button.label || "")}" placeholder="例如：加入 LINE 好友"></label><label>連結類型<select data-card-button-type><option value="url" ${button.type === "url" ? "selected" : ""}>網址</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select></label><label>網址／電話／LINE 連結<input data-card-button-value value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/, ""))}" placeholder="https://... 或 tel:0927..."></label><div class="line-source-button-order"><button type="button" data-line-move="-1" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-line-move="1" ${index === buttons.length - 1 ? "disabled" : ""}>↓</button></div></article>`).join("");
+  const sync = () => onChange?.();
+  holder.querySelectorAll("input,select").forEach((input) => input.addEventListener("input", sync));
+  holder.querySelectorAll("[data-card-button-color-picker]").forEach((picker) => picker.addEventListener("input", () => { picker.parentElement.querySelector("[data-card-button-color]").value=picker.value; sync(); }));
+  holder.querySelectorAll("[data-line-remove]").forEach((button) => button.onclick = () => { buttons.splice(Number(button.dataset.lineRemove),1); renderLineSourceButtons(buttons,onChange); sync(); });
+  holder.querySelectorAll("[data-line-move]").forEach((button) => button.onclick = () => { const index=Array.from(holder.querySelectorAll("[data-line-move]")).indexOf(button); const source=Math.floor(index/2); const target=source+Number(button.dataset.lineMove); if(target>=0&&target<buttons.length){ const item=buttons.splice(source,1)[0]; buttons.splice(target,0,item); renderLineSourceButtons(buttons,onChange); sync(); } });
+}
+function renderLineSourcePreview(card, selected) {
+  const preview = $("#my-ecard-preview-area"); if (!preview) return;
+  const cover = $("#my-v1-img-url")?.value.trim() || "";
+  const title = $("#lineSourceTitle")?.value.trim() || card.displayName;
+  const desc = $("#lineSourceDescription")?.value.trim() || card.serviceDescription || "";
+  const buttons = collectCardButtons(); const ratio = selected.id === "full" ? "2/3" : selected.id === "square" ? "1/1" : "20/13";
+  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div>${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<div class="line-source-preview-body"><strong>${esc(title)}</strong><span>${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button)=>`<span style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</span>`).join("")}</div>` : ""}</div>`;
+}
 async function card() {
   const result = await api("/v1/cards/me");
   const myCard = result.card;
@@ -621,18 +657,7 @@ async function card() {
     const selected = state.cardVersion && cardVersionMeta[state.cardVersion]
       ? { id:state.cardVersion, ...(myCard.versions?.[state.cardVersion] || {}), ...cardVersionMeta[state.cardVersion] }
       : activeCardVersion(myCard);
-    const version = cardWithVersion(myCard, selected.id);
-    panel = `<section class="business-card-digital full-ecard">
-      <div class="ecard-layout-selector">${Object.entries(cardVersionMeta).map(([id, meta]) => `<button class="${id === selected.id ? "active" : ""}" data-card-version="${id}">${meta.label}</button>`).join("")}</div>
-      <div class="ecard-editor-grid"><div class="ecard-settings">
-        <label>封面圖片<input id="cardVersionCover" placeholder="https://" value="${esc(version.coverUrl)}"></label>
-        <div class="ecard-upload-row"><input id="cardVersionFile" type="file" accept="image/*"><button class="mini-btn" type="button" id="uploadCardVersionImage">上傳</button></div>
-        <label>版面標題<input id="cardVersionTitle" value="${esc(version.versionTitle || "")}" placeholder="預設使用姓名"></label>
-        <label>版面說明<textarea id="cardVersionDescription" rows="4" placeholder="預設使用服務項目">${esc(version.serviceDescription || "")}</textarea></label>
-        <div class="card-buttons-setting"><div class="row"><strong>底部按鈕設定</strong><button type="button" class="mini-btn" id="addVersionButton">新增按鈕</button></div><div id="cardButtonRows">${(version.buttons || []).map(customButtonEditor).join("")}</div></div>
-        <button class="btn" type="button" id="saveDigitalCard">儲存名片設定</button>
-      </div><div class="ecard-live-preview"><p>即時預覽</p><div id="cardLivePreview" class="ecard-preview-card ${esc(selected.className)}">${version.coverUrl ? `<img src="${esc(version.coverUrl)}" alt="名片封面">` : `<div class="ecard-cover-placeholder">${avatar()}</div>`}<div class="ecard-preview-copy"><strong>${esc(version.versionTitle || myCard.displayName)}</strong><span>${esc(version.serviceDescription || myCard.serviceDescription || "MiraBeauty 數位名片")}</span></div>${(version.buttons || []).length ? `<div class="ecard-preview-buttons">${(version.buttons || []).slice(0,4).map((button)=>`<span style="--button-color:${esc(button.color || "#b96072")}">${esc(button.label)}</span>`).join("")}</div>` : ""}</div></div></div>
-      <div class="ecard-share-panel"><p>公開名片網址</p><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(myCard.id))}"><div id="cardPublicQr" class="qr"></div><div class="business-card-share-actions"><button class="btn" id="sharePersonalCard">分享名片</button><button class="btn alt" id="sendPersonalCard">傳送至目前聊天室</button></div><button class="mini-btn" id="copyCardUrl">複製名片網址</button></div></section>`;
+    panel = lineSourceEcardEditor(myCard, selected);
   }
   layout(`<section class="business-card"><div class="business-card-title"><button class="back-card" data-home-action="home" aria-label="返回首頁">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
   document.querySelectorAll("[data-card-tab]").forEach((button) => button.onclick = () => { state.cardView = button.dataset.cardTab; card(); });
@@ -658,13 +683,16 @@ async function card() {
     $("#copyCardUrl").onclick = async () => { await navigator.clipboard.writeText(cardPublicUrl(myCard.id)); alert("名片網址已複製"); };
     $("#sharePersonalCard").onclick = () => sharePersonalCard(myCard).catch((error) => alert(error.message));
     $("#sendPersonalCard").onclick = () => sendPersonalCardToChat(myCard).catch((error) => alert(error.message));
-    document.querySelectorAll("[data-card-version]").forEach((button) => button.onclick = () => { state.cardVersion = button.dataset.cardVersion; state.cardView = "digital"; card(); });
-    const updatePreview = () => renderDigitalCardPreview(myCard, selected);
-    ["#cardVersionCover", "#cardVersionTitle", "#cardVersionDescription"].forEach((selector) => $(selector)?.addEventListener("input", updatePreview));
-    bindCardButtonEditor(updatePreview);
-    $("#addVersionButton")?.addEventListener("click", () => { const holder = $("#cardButtonRows"); if (holder && holder.querySelectorAll("[data-card-button-row]").length < 4) { holder.insertAdjacentHTML("beforeend", customButtonEditor({}, holder.querySelectorAll("[data-card-button-row]").length)); bindCardButtonEditor(updatePreview); updatePreview(); } });
-    $("#uploadCardVersionImage").onclick = async () => { try { const file = $("#cardVersionFile").files?.[0]; if (!file) throw new Error("請先選擇圖片"); await openCardCropper(file, selected.id); } catch(e) { alert(e.message); } };
-    $("#saveDigitalCard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#cardVersionCover").value.trim(), title:$("#cardVersionTitle").value.trim(), description:$("#cardVersionDescription").value.trim(), buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; state.cardView="digital"; await card(); } catch(e) { alert(e.message); } };
+    document.querySelectorAll('input[name="my-ecard-layout"]').forEach((input) => input.onchange = () => { state.cardVersion=input.value; state.cardView="digital"; card(); });
+    const versionButtons = structuredClone(myCard.versions?.[selected.id]?.buttons || []);
+    const updatePreview = () => renderLineSourcePreview(myCard, selected);
+    renderLineSourceButtons(versionButtons, updatePreview); updatePreview();
+    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription"].forEach((selector) => $(selector)?.addEventListener("input", updatePreview));
+    $("#lineSourceAddButton").onclick = () => { if(versionButtons.length >= 4) return alert("最多可設定 4 個按鈕"); versionButtons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); renderLineSourceButtons(versionButtons,updatePreview); updatePreview(); };
+    $("#lineSourceUpload").onclick = () => $("#lineSourceImageFile").click();
+    $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
+    $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
+    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
