@@ -28,7 +28,6 @@ import {
 import {
   checkInDailyAd,
   getDailyAdCampaign,
-  listDailyAdCampaigns,
   recordAdViewProgress,
   startAdView,
 } from "./daily-ad.js";
@@ -431,25 +430,47 @@ async function app(request, env) {
       } catch (error) { return badRequest(error.message || "Unable to update member"); }
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/checkin-template") {
-      const row = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first();
-      let template = null;
-      try { template = row?.value ? JSON.parse(row.value) : null; } catch { template = null; }
-      if (template?.pages) {
-        template.pages = template.pages.map((page) => ({
+      const rows = await env.DB.batch([
+        env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first(),
+        env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first(),
+        env.DB.prepare("SELECT id FROM ad_campaigns WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' ORDER BY updated_at DESC LIMIT 1").first(),
+      ]);
+      let templates = [];
+      try { templates = rows[0]?.value ? JSON.parse(rows[0].value) : []; } catch { templates = []; }
+      if (!Array.isArray(templates) || !templates.length) {
+        let legacy = null;
+        try { legacy = rows[1]?.value ? JSON.parse(rows[1].value) : null; } catch { legacy = null; }
+        if (legacy?.pages) templates = [{ ...legacy, id: "legacy_daily_template", campaignId: rows[2]?.id || "campaign_daily_template" }];
+      }
+      templates = templates.map((template) => ({
+        ...template,
+        id: String(template.id || newId("daily_template")),
+        campaignId: String(template.campaignId || "campaign_daily_template"),
+        pages: (Array.isArray(template.pages) ? template.pages : []).map((page) => ({
           ...page,
           imageUrl: normalizeTemplateImageUrl(page.imageUrl),
-        }));
-      }
-      return json({ success: true, template });
+        })),
+      }));
+      return json({ success: true, templates, template: templates[0] || null });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template") {
       const template = (await readJson(request)) || {};
       const pages = Array.isArray(template.pages) ? template.pages.slice(0, 12) : [];
       if (!pages.length) return badRequest("At least one template page is required");
+      const meta = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first();
+      let templates = [];
+      try { templates = meta?.value ? JSON.parse(meta.value) : []; } catch { templates = []; }
+      if (!Array.isArray(templates)) templates = [];
+      const requestedId = String(template.id || "");
+      const previous = templates.find((item) => String(item.id) === requestedId);
+      const templateId = previous?.id || newId("daily_template");
+      const campaignId = previous?.campaignId || String(template.campaignId || `campaign_daily_template_${templateId}`);
       const safe = {
+        id: templateId,
+        campaignId,
         active: template.active !== false,
         entryUrl: String(template.entryUrl || "").slice(0, 4096),
-        altText: String(template.altText || "簽到贈點活動").slice(0, 300),
+        altText: String(template.altText || "今日簽到").slice(0, 300),
         rotationMode: template.rotationMode === "sequential" ? "sequential" : "random",
         pages: pages.map((page) => ({
           imageUrl: normalizeTemplateImageUrl(page.imageUrl).slice(0, 4096), imageLink: String(page.imageLink || "").slice(0, 4096),
@@ -459,18 +480,21 @@ async function app(request, env) {
           buttons: (Array.isArray(page.buttons) ? page.buttons : []).slice(0, 4).map((button) => ({ label: String(button.label || "").slice(0, 80), type: "uri", text: "", uri: String(button.uri || "").slice(0, 4096), color: /^#[0-9a-f]{6}$/i.test(String(button.color || "")) ? String(button.color) : "" })).filter((button) => button.label && button.uri),
         })),
       };
-      const campaignId = newId("campaign_daily_template");
+      templates = [...templates.filter((item) => String(item.id) !== templateId), safe];
       const campaignStatus = safe.active ? "active" : "paused";
       const statements = [
-        env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(safe)),
-        env.DB.prepare("UPDATE ad_campaigns SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%'"),
-        env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?)").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
+        env.DB.prepare("DELETE FROM ad_creatives WHERE campaign_id = ?").bind(campaignId),
+        env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status, starts_at = excluded.starts_at, ends_at = excluded.ends_at, required_creative_count = excluded.required_creative_count, rotation_mode = excluded.rotation_mode, updated_at = CURRENT_TIMESTAMP").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
       ];
       safe.pages.forEach((page, index) => {
         statements.push(env.DB.prepare("INSERT INTO ad_creatives (id, campaign_id, creative_type, title, media_url, preview_url, target_url, image_link, buttons_json, bubble_size, image_aspect_ratio, image_aspect_mode, required_watch_seconds, required_completion_ratio, display_order, status) VALUES (?, ?, 'image', ?, ?, '', '', ?, ?, ?, ?, ?, 3, 0, ?, ?)").bind(newId("creative_daily_template"), campaignId, safe.altText, page.imageUrl, page.imageLink, JSON.stringify(page.buttons), page.bubbleSize, page.imageAspectRatio, page.imageAspectMode, index, safe.active ? "active" : "archived"));
       });
+      statements.push(
+        env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_templates', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(templates)),
+        env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(safe)),
+      );
       await env.DB.batch(statements);
-      return json({ success: true, template: safe, campaignId });
+      return json({ success: true, template: safe, templates, campaignId });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template/upload-image") {
       const form = await request.formData();
@@ -729,12 +753,10 @@ async function app(request, env) {
   if (request.method === "GET" && url.pathname === "/v1/daily-ad") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const campaignId = String(url.searchParams.get("campaignId") || "");
-    const campaigns = await listDailyAdCampaigns(env.DB);
-    const dailyAd = await getDailyAdCampaign(env.DB, member.userId, campaignId);
+    const dailyAd = await getDailyAdCampaign(env.DB, member.userId);
     return dailyAd
-      ? json({ success: true, campaigns, ...dailyAd })
-      : json({ success: true, campaigns, campaign: null, creatives: [] });
+      ? json({ success: true, ...dailyAd })
+      : json({ success: true, campaign: null, creatives: [] });
   }
 
   if (
@@ -744,7 +766,7 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     const body = (await readJson(request)) || {};
-    const result = await startAdView(env.DB, member.userId, body.creativeId, String(body.campaignId || ""));
+    const result = await startAdView(env.DB, member.userId, body.creativeId);
     return result.ok
       ? json({ success: true, ...result }, 201)
       : badRequest(result.reason);
@@ -772,8 +794,7 @@ async function app(request, env) {
   if (request.method === "POST" && url.pathname === "/v1/daily-ad/check-in") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const body = (await readJson(request)) || {};
-    const result = await checkInDailyAd(env.DB, member.userId, String(body.campaignId || ""));
+    const result = await checkInDailyAd(env.DB, member.userId);
     return result.ok
       ? json({ success: true, ...result }, result.duplicate ? 200 : 201)
       : badRequest(result.reason);
