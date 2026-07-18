@@ -350,7 +350,7 @@ async function daily() {
     clearInterval(dailyRotationTimer);
     dailyRotationTimer = null;
   }
-  const renderTabs = (campaigns = []) => `<div class="daily-top-tabs" role="tablist"><button type="button" class="daily-top-tab ${state.dailyPanel === "checkin" ? "active" : ""}" data-daily-panel="checkin">今日簽到</button>${campaigns.filter((campaign) => campaign.id !== campaigns[0]?.id).map((campaign) => `<button type="button" class="daily-top-tab ${state.dailyCampaignId === campaign.id ? "active" : ""}" data-daily-campaign="${esc(campaign.id)}">${esc(campaign.name || "簽到活動")}</button>`).join("")}<button type="button" class="daily-top-tab ${state.dailyPanel === "announcement" ? "active" : ""}" data-daily-panel="announcement">行政公告</button></div>`;
+  const renderTabs = (campaigns = []) => `<div class="daily-top-tabs" role="tablist"><button type="button" class="daily-top-tab ${state.dailyPanel === "checkin" && state.dailyCampaignId === campaigns[0]?.id ? "active" : ""}" data-daily-panel="checkin" data-daily-campaign="${esc(campaigns[0]?.id || "")}">今日簽到</button>${campaigns.filter((campaign) => campaign.id !== campaigns[0]?.id).map((campaign) => `<button type="button" class="daily-top-tab ${state.dailyCampaignId === campaign.id ? "active" : ""}" data-daily-campaign="${esc(campaign.id)}">${esc(campaign.name || "簽到活動")}</button>`).join("")}<button type="button" class="daily-top-tab ${state.dailyPanel === "announcement" ? "active" : ""}" data-daily-panel="announcement">行政公告</button></div>`;
   const bindTabs = () => {
     document.querySelectorAll("[data-daily-panel]").forEach((button) => {
       button.onclick = () => { state.dailyPanel = button.dataset.dailyPanel; daily(); };
