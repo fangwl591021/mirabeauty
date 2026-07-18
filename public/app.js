@@ -597,13 +597,8 @@ async function prepareCardLiff() {
   return true;
 }
 async function sharePersonalCard(card) {
-  // 從 workers.dev 或一般瀏覽器開啟時並不是 LIFF 容器；
-  // 先回到完整 LIFF URL，才能使用 LINE 的通訊錄分享選擇器。
-  if (!window.liff || !liff.isInClient?.()) {
-    location.assign(cardSharePickerUrl(card.id));
-    return;
-  }
-  // LINE Login 會離開本頁再回來；先保存分享意圖，回來後才能自動開啟通訊錄。
+  // PC 外部瀏覽器同樣由官方 SDK 透過 OTT 開啟通訊錄；
+  // 不能以 isInClient() 判斷，也不能手動拼接分享網址。
   state.pendingCardShareId = card.id;
   sessionStorage.setItem("mirabeauty_pending_card_share_id", card.id);
   await resumePendingCardShare();
@@ -626,6 +621,14 @@ async function resumePendingCardShare() {
     const shared = await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
     if (shared !== false) alert("名片已送出");
   } catch (error) {
+    // 後台剛啟用 shareTargetPicker 時，舊的 LINE access token 仍可能沒有新權限。
+    // 清除舊 token 後由下一次載入重新登入，讓 SDK 取得新的 OTT/權限。
+    if (/not allowed|not available|shareTargetPicker/i.test(String(error?.message || ""))) {
+      alert("LINE 分享權限已更新，將重新登入後再開啟通訊錄。");
+      try { if (liff.isLoggedIn()) liff.logout(); } catch {}
+      location.replace(cleanLiffRedirectUrl());
+      return;
+    }
     alert(error.message || "無法開啟名片分享通訊錄");
   } finally {
     if (!redirectedToLogin) clearPendingCardShare();
