@@ -816,7 +816,11 @@ async function card() {
     const versionButtons = structuredClone(myCard.versions?.[selected.id]?.buttons || []);
     const updatePreview = () => renderLineSourcePreview(myCard, selected);
     renderLineSourceButtons(versionButtons, updatePreview); updatePreview();
-    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription", "#lineSourceDescriptionAlign"].forEach((selector) => $(selector)?.addEventListener("input", updatePreview));
+    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription", "#lineSourceDescriptionAlign"].forEach((selector) => {
+      const field = $(selector);
+      field?.addEventListener("input", updatePreview);
+      field?.addEventListener("change", updatePreview);
+    });
     $("#lineSourceAddButton").onclick = () => { if(versionButtons.length >= 4) return alert("最多可設定 4 個按鈕"); versionButtons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); renderLineSourceButtons(versionButtons,updatePreview); updatePreview(); };
     $("#lineSourceUpload").onclick = () => $("#lineSourceImageFile").click();
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
