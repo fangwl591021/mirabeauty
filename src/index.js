@@ -28,6 +28,7 @@ import {
 import {
   checkInDailyAd,
   getDailyAdCampaign,
+  listDailyAdCampaigns,
   recordAdViewProgress,
   startAdView,
 } from "./daily-ad.js";
@@ -728,10 +729,12 @@ async function app(request, env) {
   if (request.method === "GET" && url.pathname === "/v1/daily-ad") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const dailyAd = await getDailyAdCampaign(env.DB, member.userId);
+    const campaignId = String(url.searchParams.get("campaignId") || "");
+    const campaigns = await listDailyAdCampaigns(env.DB);
+    const dailyAd = await getDailyAdCampaign(env.DB, member.userId, campaignId);
     return dailyAd
-      ? json({ success: true, ...dailyAd })
-      : json({ success: true, campaign: null, creatives: [] });
+      ? json({ success: true, campaigns, ...dailyAd })
+      : json({ success: true, campaigns, campaign: null, creatives: [] });
   }
 
   if (
@@ -741,7 +744,7 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     const body = (await readJson(request)) || {};
-    const result = await startAdView(env.DB, member.userId, body.creativeId);
+    const result = await startAdView(env.DB, member.userId, body.creativeId, String(body.campaignId || ""));
     return result.ok
       ? json({ success: true, ...result }, 201)
       : badRequest(result.reason);
@@ -769,7 +772,8 @@ async function app(request, env) {
   if (request.method === "POST" && url.pathname === "/v1/daily-ad/check-in") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const result = await checkInDailyAd(env.DB, member.userId);
+    const body = (await readJson(request)) || {};
+    const result = await checkInDailyAd(env.DB, member.userId, String(body.campaignId || ""));
     return result.ok
       ? json({ success: true, ...result }, result.duplicate ? 200 : 201)
       : badRequest(result.reason);
