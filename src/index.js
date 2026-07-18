@@ -454,6 +454,30 @@ async function app(request, env) {
       }));
       return json({ success: true, templates, template: templates[0] || null });
     }
+    if (request.method === "DELETE" && url.pathname.startsWith("/v1/admin/checkin-template/")) {
+      const templateId = decodeURIComponent(url.pathname.slice("/v1/admin/checkin-template/".length));
+      const meta = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first();
+      let templates = [];
+      try { templates = meta?.value ? JSON.parse(meta.value) : []; } catch { templates = []; }
+      if (!Array.isArray(templates)) templates = [];
+      const target = templates.find((item) => String(item.id) === templateId);
+      if (!target) return badRequest("找不到此標籤活動");
+      if (templates.length <= 1) return badRequest("至少要保留一組簽到活動");
+      const remaining = templates.filter((item) => String(item.id) !== templateId);
+      const campaignId = String(target.campaignId || "");
+      const statements = [
+        env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_templates', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(remaining)),
+        env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(remaining[0])),
+      ];
+      if (campaignId) {
+        statements.push(
+          env.DB.prepare("DELETE FROM ad_creatives WHERE campaign_id = ?").bind(campaignId),
+          env.DB.prepare("DELETE FROM ad_campaigns WHERE id = ?").bind(campaignId),
+        );
+      }
+      await env.DB.batch(statements);
+      return json({ success: true, templates: remaining });
+    }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template") {
       const template = (await readJson(request)) || {};
       const pages = Array.isArray(template.pages) ? template.pages.slice(0, 12) : [];
