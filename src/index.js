@@ -458,10 +458,19 @@ async function app(request, env) {
       const template = (await readJson(request)) || {};
       const pages = Array.isArray(template.pages) ? template.pages.slice(0, 12) : [];
       if (!pages.length) return badRequest("At least one template page is required");
-      const meta = await env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first();
+      const templateMetaRows = await env.DB.batch([
+        env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first(),
+        env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first(),
+        env.DB.prepare("SELECT id FROM ad_campaigns WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' ORDER BY updated_at DESC LIMIT 1").first(),
+      ]);
       let templates = [];
-      try { templates = meta?.value ? JSON.parse(meta.value) : []; } catch { templates = []; }
+      try { templates = templateMetaRows[0]?.value ? JSON.parse(templateMetaRows[0].value) : []; } catch { templates = []; }
       if (!Array.isArray(templates)) templates = [];
+      if (!templates.length) {
+        let legacy = null;
+        try { legacy = templateMetaRows[1]?.value ? JSON.parse(templateMetaRows[1].value) : null; } catch { legacy = null; }
+        if (legacy?.pages) templates = [{ ...legacy, id: "legacy_daily_template", campaignId: templateMetaRows[2]?.id || "campaign_daily_template" }];
+      }
       const requestedId = String(template.id || "");
       const previous = templates.find((item) => String(item.id) === requestedId);
       const templateId = previous?.id || newId("daily_template");
