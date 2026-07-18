@@ -647,17 +647,29 @@ function clearCardShareMode() {
   history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 async function shareCardFromHeader() {
+  const cardId = state.cardShareId;
   let redirectedToLogin = false;
+  let pickerFinished = false;
   try {
     if (!await prepareCardLiff()) { redirectedToLogin = true; return; }
     if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享功能，請在 LINE Developers 啟用 shareTargetPicker");
-    const result = await api(`/v1/cards/${encodeURIComponent(state.cardShareId)}/public`);
-    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
-    if (shared === false) return;
+    const result = await api(`/v1/cards/${encodeURIComponent(cardId)}/public`);
+    await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
+    pickerFinished = true; // 完成或取消都不要落回會員中心。
   } catch (error) {
     alert(error.message || "無法開啟名片分享通訊錄");
   } finally {
     if (!redirectedToLogin) clearCardShareMode();
+    if (pickerFinished) {
+      // 手機 LINE：回到原聊天訊息；PC 外部瀏覽器：保留公開名片頁。
+      if (liff.isInClient?.()) {
+        try { liff.closeWindow(); } catch {}
+      } else {
+        state.publicCard = cardId;
+        history.replaceState({}, "", `/c/${encodeURIComponent(cardId)}`);
+        await publicCard();
+      }
+    }
   }
 }
 async function sendPersonalCardToChat(card) {
