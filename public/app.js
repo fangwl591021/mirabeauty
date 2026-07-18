@@ -506,7 +506,12 @@ function cardFlex(card) {
   return {
     type:"bubble", size:version.id === "full" ? "giga" : "mega",
     ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:version.aspect, aspectMode:"cover" } } : {}),
-    header:{ type:"box", layout:"vertical", paddingAll:"8px", contents:[{ type:"button", style:"primary", color:"#B96072", height:"sm", action:{type:"uri",label:"分享名片",uri:cardPublicUrl(card.id)} }] },
+    header:{ type:"box", layout:"horizontal", justifyContent:"space-between", alignItems:"center", paddingAll:"8px", contents:[
+      { type:"box", layout:"vertical", flex:1, contents:[] },
+      { type:"box", layout:"vertical", justifyContent:"center", backgroundColor:"#EF4444", width:"65px", height:"25px", cornerRadius:"25px", contents:[
+        { type:"text", text:"分享", weight:"bold", align:"center", color:"#FFFFFF", size:"xs" }
+      ], action:{ type:"uri", label:"分享", uri:cardPublicUrl(card.id) } }
+    ] },
     body:{ type:"box", layout:"vertical", paddingAll:"18px", contents:bodyContents },
     footer:{ type:"box", layout:"vertical", spacing:"sm", contents:[
       action("查看名片", cardPublicUrl(card.id)),
