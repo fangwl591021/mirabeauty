@@ -533,7 +533,9 @@ function cardFlex(card) {
     ...(metaFields ? [{ type:"text", text:metaFields, size:"sm", color:"#5E5260", align:"center", wrap:true, margin:"md", maxLines:2 }] : []),
     ...(card.serviceDescription ? [{ type:"text", text:card.serviceDescription, size:"sm", color:"#5E5260", align:serviceAlign, wrap:true, margin:"md", maxLines:4 }] : []),
   ];
-  const actions = cardActionItems(card).slice(0, 2);
+  // 分享 Flex 的按鈕必須與「底部按鈕設定」完全同一份資料，
+  // 不再混入系統自動產生的聯絡按鈕，避免預覽和實際訊息不同。
+  const actions = (card.buttons || []).filter((button) => button?.enabled !== false && button?.label && button?.value).slice(0, 4);
   return {
     type:"bubble", size:version.id === "full" ? "giga" : "mega",
     ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:version.aspect, aspectMode:"cover" } } : {}),
@@ -544,10 +546,9 @@ function cardFlex(card) {
       ], action:{ type:"uri", uri:cardSharePickerUrl(card.id) } }
     ] },
     body:{ type:"box", layout:"vertical", paddingAll:"18px", contents:bodyContents },
-    footer:{ type:"box", layout:"vertical", spacing:"sm", contents:[
-      action("查看名片", cardPublicUrl(card.id)),
-      ...actions.map((item) => action(item.label, item.value, "#8D6A54")),
-    ] },
+    footer:{ type:"box", layout:"vertical", spacing:"sm", contents:
+      actions.map((item) => action(item.label, item.value, item.color || "#B96072")),
+    },
   };
 }
 async function compressCardImage(file) {
