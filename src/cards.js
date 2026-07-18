@@ -12,6 +12,7 @@ const DEFAULT_SERVICE_DESCRIPTION = `源自對美的熱愛創立了米拉
 讓每次保養化為寵愛的儀式`;
 
 const text = (value, length) => String(value || '').trim().slice(0, length);
+const normaliseTextAlign = (value) => ['left', 'center', 'right'].includes(String(value || '')) ? String(value) : 'left';
 
 function normaliseUrl(value, label, { allowEmpty = true } = {}) {
   const url = text(value, 2048);
@@ -84,6 +85,7 @@ function parseVersions(row) {
       coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048),
       title: text(source.title, 120),
       description: text(source.description, 1600),
+      serviceTextAlign: normaliseTextAlign(source.serviceTextAlign),
       buttons: buttons.length ? buttons : defaults,
       layout: VERSION_LAYOUT[version],
     };
@@ -116,6 +118,7 @@ function cardFromRow(row, publicView = false) {
     lineUrl: row.line_url,
     address: row.address,
     serviceDescription: row.service_description || DEFAULT_SERVICE_DESCRIPTION,
+    serviceTextAlign: normaliseTextAlign(selected.serviceTextAlign),
     coverUrl: selected.coverUrl,
     buttons: selected.buttons.filter((button) => button?.enabled !== false),
     selectedVersion,
@@ -148,6 +151,7 @@ export async function saveMyCard(db, userId, payload, member) {
     lineUrl: normaliseUrl(payload.lineUrl, 'LINE 連結'),
     address: text(payload.address, 300),
     serviceDescription: text(payload.serviceDescription || existing?.serviceDescription || DEFAULT_SERVICE_DESCRIPTION, 1600),
+    serviceTextAlign: normaliseTextAlign(payload.serviceTextAlign || existing?.serviceTextAlign),
     selectedVersion: CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing?.selectedVersion || 'standard'),
     versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
     status: ['draft', 'published'].includes(payload.status) ? payload.status : 'published',
@@ -155,6 +159,8 @@ export async function saveMyCard(db, userId, payload, member) {
   const defaults = defaultCardButtons(values);
   CARD_VERSIONS.forEach((version) => {
     if (!values.versions[version].buttons.length) values.versions[version].buttons = defaults;
+    // 服務項目是共用內容；三種名片版型必須維持同一個文字對齊設定。
+    values.versions[version].serviceTextAlign = values.serviceTextAlign;
   });
   const id = existing?.id || newId('card');
   const selected = values.versions[values.selectedVersion] || values.versions.standard;
