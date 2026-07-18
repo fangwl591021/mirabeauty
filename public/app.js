@@ -508,6 +508,26 @@ async function uploadCardImage(file) {
   const response = await fetch("/v1/cards/me/media", { method:"POST", headers:state.token ? { authorization:`Bearer ${state.token}` } : {}, body:form });
   const body = await response.json(); if (!response.ok) throw new Error(body.error || "圖片上傳失敗"); return body.url;
 }
+let cardCropper = null;
+function ensureCardCropperModal() {
+  let modal = $("#cardCropperModal");
+  if (modal) return modal;
+  document.body.insertAdjacentHTML("beforeend", `<div class="card-cropper-modal" id="cardCropperModal" role="dialog" aria-modal="true"><div class="card-cropper-sheet"><div class="card-cropper-head"><strong>裁切封面圖片</strong><button type="button" id="closeCardCropper">×</button></div><div class="card-cropper-stage"><img id="cardCropperImage" alt="裁切圖片"></div><div class="card-cropper-tools"><button type="button" data-crop-action="zoom-out">縮小</button><button type="button" data-crop-action="zoom-in">放大</button><button type="button" data-crop-action="rotate">旋轉</button><button type="button" data-crop-action="reset">重設</button></div><div class="card-cropper-actions"><button type="button" class="btn alt" id="cancelCardCropper">取消</button><button type="button" class="btn" id="confirmCardCropper">確認裁切</button></div></div></div>`);
+  return $("#cardCropperModal");
+}
+async function openCardCropper(file, versionId) {
+  if (!window.Cropper) throw new Error("裁切器載入失敗，請確認網路後重新開啟頁面");
+  if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
+  const modal = ensureCardCropperModal(); const image = $("#cardCropperImage");
+  const ratio = cardVersionMeta[versionId]?.aspect || "20:13"; const [width,height] = ratio.split(":").map(Number);
+  const close = () => { cardCropper?.destroy(); cardCropper=null; URL.revokeObjectURL(image.src); modal.classList.remove("open"); };
+  $("#closeCardCropper").onclick = close; $("#cancelCardCropper").onclick = close;
+  modal.classList.add("open"); image.src = URL.createObjectURL(file);
+  await new Promise((resolve,reject) => { image.onload=resolve; image.onerror=reject; });
+  cardCropper?.destroy(); cardCropper = new Cropper(image, { aspectRatio:width / height, viewMode:1, dragMode:"move", autoCropArea:.92, cropBoxMovable:true, cropBoxResizable:true, zoomable:true, zoomOnTouch:true, zoomOnWheel:true, movable:true, responsive:true, background:false, guides:true, center:true, highlight:false });
+  modal.querySelectorAll("[data-crop-action]").forEach((button) => button.onclick = () => { const action=button.dataset.cropAction; if (action === "zoom-in") cardCropper.zoom(.1); if (action === "zoom-out") cardCropper.zoom(-.1); if (action === "rotate") cardCropper.rotate(90); if (action === "reset") cardCropper.reset(); });
+  $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); $("#cardVersionCover").value=imageUrl; close(); alert("圖片已裁切並上傳，請按儲存名片設定"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
+}
 async function prepareCardLiff() {
   if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
   await liff.init({ liffId: state.config.liffId });
@@ -622,7 +642,7 @@ async function card() {
     document.querySelectorAll("[data-card-version]").forEach((button) => button.onclick = () => { state.cardVersion = button.dataset.cardVersion; state.cardView = "digital"; card(); });
     bindCardButtonEditor();
     $("#addVersionButton")?.addEventListener("click", () => { const holder = $("#cardButtonRows"); if (holder && holder.querySelectorAll("[data-card-button-row]").length < 4) { holder.insertAdjacentHTML("beforeend", customButtonEditor()); bindCardButtonEditor(); } });
-    $("#uploadCardVersionImage").onclick = async () => { try { const file = $("#cardVersionFile").files?.[0]; if (!file) throw new Error("請先選擇圖片"); const button = $("#uploadCardVersionImage"); button.disabled=true; button.textContent="上傳中"; const imageUrl = await uploadCardImage(file); $("#cardVersionCover").value=imageUrl; alert("圖片已上傳，請按儲存名片設定"); } catch(e) { alert(e.message); } finally { const button=$("#uploadCardVersionImage"); button.disabled=false; button.textContent="上傳"; } };
+    $("#uploadCardVersionImage").onclick = async () => { try { const file = $("#cardVersionFile").files?.[0]; if (!file) throw new Error("請先選擇圖片"); await openCardCropper(file, selected.id); } catch(e) { alert(e.message); } };
     $("#saveDigitalCard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#cardVersionCover").value.trim(), title:$("#cardVersionTitle").value.trim(), description:$("#cardVersionDescription").value.trim(), buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; state.cardView="digital"; await card(); } catch(e) { alert(e.message); } };
   }
 }
