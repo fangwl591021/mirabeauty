@@ -597,6 +597,12 @@ async function prepareCardLiff() {
   return true;
 }
 async function sharePersonalCard(card) {
+  // 從 workers.dev 或一般瀏覽器開啟時並不是 LIFF 容器；
+  // 先回到完整 LIFF URL，才能使用 LINE 的通訊錄分享選擇器。
+  if (!window.liff || !liff.isInClient?.()) {
+    location.assign(cardSharePickerUrl(card.id));
+    return;
+  }
   // LINE Login 會離開本頁再回來；先保存分享意圖，回來後才能自動開啟通訊錄。
   state.pendingCardShareId = card.id;
   sessionStorage.setItem("mirabeauty_pending_card_share_id", card.id);
