@@ -57,6 +57,7 @@ const state = {
   publicCard: publicCardFromLocation(),
   cardShareId: cardShareIdFromLocation() || sessionStorage.getItem("mirabeauty_card_share_id") || "",
   cardShareMode: cardShareModeFromLocation() || sessionStorage.getItem("mirabeauty_card_share_mode") === "1",
+  pendingCardShareId: sessionStorage.getItem("mirabeauty_pending_card_share_id") || "",
   courseView: "catalog",
   cardVersion: "",
   daily: null,
@@ -193,6 +194,7 @@ async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
   // 不自動重導，避免某些 LINE WebView 停在載入畫面。
   if (state.token && state.invite) return renderLogin();
+  if (state.pendingCardShareId) return resumePendingCardShare();
   if (state.cardShareMode && state.cardShareId) return shareCardFromHeader();
   if (state.publicCard) return publicCard();
   if (!state.token) return renderLogin();
@@ -595,11 +597,33 @@ async function prepareCardLiff() {
   return true;
 }
 async function sharePersonalCard(card) {
-  if (!await prepareCardLiff()) return;
-  if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享功能，請在 LINE Developers 啟用 shareTargetPicker");
-  const result = await liff.shareTargetPicker([{ type:"flex", altText:`${card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(card) }]);
-  if (result === false) throw new Error("已取消分享");
-  alert("名片已送出");
+  // LINE Login 會離開本頁再回來；先保存分享意圖，回來後才能自動開啟通訊錄。
+  state.pendingCardShareId = card.id;
+  sessionStorage.setItem("mirabeauty_pending_card_share_id", card.id);
+  await resumePendingCardShare();
+}
+function clearPendingCardShare() {
+  state.pendingCardShareId = "";
+  sessionStorage.removeItem("mirabeauty_pending_card_share_id");
+}
+async function resumePendingCardShare() {
+  let redirectedToLogin = false;
+  try {
+    await initLiffOnce();
+    if (!liff.isLoggedIn()) {
+      redirectedToLogin = true;
+      liff.login({ redirectUri: cleanLiffRedirectUrl() });
+      return;
+    }
+    if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LINE 環境未提供分享通訊錄。請在 LINE Developers 的 LIFF 設定啟用 shareTargetPicker，並從 LINE 開啟此 LIFF。");
+    const result = await api(`/v1/cards/${encodeURIComponent(state.pendingCardShareId)}/public`);
+    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
+    if (shared !== false) alert("名片已送出");
+  } catch (error) {
+    alert(error.message || "無法開啟名片分享通訊錄");
+  } finally {
+    if (!redirectedToLogin) clearPendingCardShare();
+  }
 }
 function clearCardShareMode() {
   state.cardShareId = "";
