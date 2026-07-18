@@ -517,7 +517,7 @@ function activeCardVersion(card) {
 }
 function cardWithVersion(card, id) {
   const version = { ...(card.versions?.[id] || {}), ...(cardVersionMeta[id] || cardVersionMeta.standard) };
-  return { ...card, selectedVersion:id, coverUrl:version.coverUrl || "", buttons:version.buttons || [], serviceDescription:version.description || card.serviceDescription, serviceTextAlign:version.serviceTextAlign || card.serviceTextAlign || "left", versionTitle:version.title || card.displayName, version };
+  return { ...card, selectedVersion:id, coverUrl:version.coverUrl || "", buttons:version.buttons || [], serviceDescription:version.description || card.serviceDescription, serviceTextAlign:version.serviceTextAlign || card.serviceTextAlign || "left", descriptionTextAlign:version.descriptionTextAlign || card.descriptionTextAlign || "left", versionTitle:version.title || card.displayName, version };
 }
 function cardFlex(card) {
   const action = (label, uri, color = "#B96072") => ({ type:"button", style:"primary", height:"sm", color, action:{ type:"uri", label:String(label).slice(0,20), uri } });
@@ -526,7 +526,7 @@ function cardFlex(card) {
     card.companyName,
     [card.jobTitle, card.department].filter(Boolean).join("｜"),
   ].filter(Boolean).join("\n");
-  const serviceAlign = ({ left:"start", center:"center", right:"end" })[card.serviceTextAlign] || "start";
+  const serviceAlign = ({ left:"start", center:"center", right:"end" })[card.descriptionTextAlign || card.serviceTextAlign] || "start";
   const bodyContents = [
     { type:"text", text:card.versionTitle || card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", align:"center", wrap:true },
     ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm", align:"center", wrap:true }] : []),
@@ -742,6 +742,7 @@ function lineSourceEcardEditor(card, selected) {
       <div class="line-source-section"><p class="line-source-label">封面圖片</p><div class="line-source-image-row"><input id="my-v1-img-url" placeholder="https://" value="${esc(version.coverUrl)}"><button type="button" id="lineSourceUpload">上傳</button><input id="lineSourceImageFile" type="file" accept="image/*" hidden></div></div>
       <label class="line-source-field"><span>版面標題</span><input id="lineSourceTitle" value="${esc(version.versionTitle || "")}" placeholder="預設使用姓名"></label>
       <label class="line-source-field"><span>版面說明</span><textarea id="lineSourceDescription" rows="5" placeholder="預設使用服務項目">${esc(version.serviceDescription || "")}</textarea></label>
+      <label class="line-source-field"><span>版面說明對齊</span><select id="lineSourceDescriptionAlign"><option value="left" ${version.descriptionTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${version.descriptionTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${version.descriptionTextAlign === "right" ? "selected" : ""}>靠右</option></select></label>
       <div class="line-source-buttons"><div class="line-source-buttons-head"><p class="line-source-label">底部按鈕設定</p><button type="button" id="lineSourceAddButton">＋ 新增按鈕</button></div><div id="my-v1-buttons-list"></div></div>
       <button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button>
     </div>
@@ -764,8 +765,9 @@ function renderLineSourcePreview(card, selected) {
   const cover = $("#my-v1-img-url")?.value.trim() || "";
   const title = $("#lineSourceTitle")?.value.trim() || card.displayName;
   const desc = $("#lineSourceDescription")?.value.trim() || card.serviceDescription || "";
+  const descriptionAlign = $("#lineSourceDescriptionAlign")?.value || selected.descriptionTextAlign || "left";
   const buttons = collectCardButtons(); const ratio = selected.id === "full" ? "2/3" : selected.id === "square" ? "1/1" : "20/13";
-  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div>${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<div class="line-source-preview-body"><strong>${esc(title)}</strong><span>${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button)=>`<span style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</span>`).join("")}</div>` : ""}</div>`;
+  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div>${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<div class="line-source-preview-body"><strong>${esc(title)}</strong><span style="text-align:${esc(descriptionAlign)}">${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button)=>`<span style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</span>`).join("")}</div>` : ""}</div>`;
 }
 async function card() {
   const result = await api("/v1/cards/me");
@@ -814,12 +816,12 @@ async function card() {
     const versionButtons = structuredClone(myCard.versions?.[selected.id]?.buttons || []);
     const updatePreview = () => renderLineSourcePreview(myCard, selected);
     renderLineSourceButtons(versionButtons, updatePreview); updatePreview();
-    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription"].forEach((selector) => $(selector)?.addEventListener("input", updatePreview));
+    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription", "#lineSourceDescriptionAlign"].forEach((selector) => $(selector)?.addEventListener("input", updatePreview));
     $("#lineSourceAddButton").onclick = () => { if(versionButtons.length >= 4) return alert("最多可設定 4 個按鈕"); versionButtons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); renderLineSourceButtons(versionButtons,updatePreview); updatePreview(); };
     $("#lineSourceUpload").onclick = () => $("#lineSourceImageFile").click();
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
-    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
+    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:collectCardButtons() }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
