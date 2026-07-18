@@ -431,7 +431,7 @@ async function app(request, env) {
       } catch (error) { return badRequest(error.message || "Unable to update member"); }
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/checkin-template") {
-      const rows = await env.DB.batch([
+      const rows = await Promise.all([
         env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first(),
         env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first(),
         env.DB.prepare("SELECT id FROM ad_campaigns WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' ORDER BY updated_at DESC LIMIT 1").first(),
@@ -458,7 +458,7 @@ async function app(request, env) {
       const template = (await readJson(request)) || {};
       const pages = Array.isArray(template.pages) ? template.pages.slice(0, 12) : [];
       if (!pages.length) return badRequest("At least one template page is required");
-      const templateMetaRows = await env.DB.batch([
+      const templateMetaRows = await Promise.all([
         env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_templates'").first(),
         env.DB.prepare("SELECT value FROM app_meta WHERE key = 'checkin_reward_template'").first(),
         env.DB.prepare("SELECT id FROM ad_campaigns WHERE id = 'campaign_daily_template' OR id LIKE 'campaign_daily_template_%' ORDER BY updated_at DESC LIMIT 1").first(),
