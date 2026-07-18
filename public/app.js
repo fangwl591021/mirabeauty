@@ -554,15 +554,28 @@ function cardFlex(card) {
 async function compressCardImage(file) {
   if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
   const source = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(source.width, source.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(source.width * scale)); canvas.height = Math.max(1, Math.round(source.height * scale));
-  canvas.getContext("2d").drawImage(source, 0, 0, canvas.width, canvas.height); source.close?.();
-  for (const quality of [0.86,0.76,0.66,0.56]) {
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
-    if (blob && blob.size <= 900 * 1024) return new File([blob], "card-cover.webp", { type:"image/webp" });
+  try {
+    let smallest = null;
+    for (const maxSide of [1600, 1280, 1024, 800, 640, 512]) {
+      const scale = Math.min(1, maxSide / Math.max(source.width, source.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(source.width * scale));
+      canvas.height = Math.max(1, Math.round(source.height * scale));
+      const context = canvas.getContext("2d");
+      context.drawImage(source, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.84, 0.72, 0.60, 0.48, 0.36]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+        if (!blob) continue;
+        if (!smallest || blob.size < smallest.size) smallest = blob;
+        // 優先保留畫質：可達原本目標時即停止；否則仍使用最小壓縮結果上傳。
+        if (blob.size <= 900 * 1024) return new File([blob], "card-cover.webp", { type:"image/webp" });
+      }
+    }
+    if (!smallest) throw new Error("圖片壓縮失敗，請改用其他圖片");
+    return new File([smallest], "card-cover.webp", { type:"image/webp" });
+  } finally {
+    source.close?.();
   }
-  throw new Error("圖片無法壓縮至 900KB，請選擇較小的圖片");
 }
 async function uploadCardImage(file) {
   const compressed = await compressCardImage(file);
