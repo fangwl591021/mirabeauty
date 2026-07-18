@@ -529,7 +529,7 @@ function cardFlex(card) {
   ].filter(Boolean).join("\n");
   const bodyContents = [
     { type:"text", text:card.versionTitle || card.displayName || "MiraBeauty 會員", weight:"bold", size:"xl", color:"#2A2030", align:"center", wrap:true },
-    ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm" }] : []),
+    ...(card.englishName ? [{ type:"text", text:card.englishName, size:"sm", color:"#857581", margin:"sm", align:"center", wrap:true }] : []),
     ...(fields ? [{ type:"text", text:fields, size:"sm", color:"#5E5260", align:"center", wrap:true, margin:"md", maxLines:4 }] : []),
   ];
   const actions = cardActionItems(card).slice(0, 2);
