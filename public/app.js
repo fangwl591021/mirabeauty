@@ -61,6 +61,8 @@ const state = {
   courseView: "catalog",
   cardVersion: "",
   daily: null,
+  dailyPanel: "checkin",
+  dailyCampaignId: new URLSearchParams(location.search).get("checkin") || "",
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
@@ -348,15 +350,39 @@ async function daily() {
     clearInterval(dailyRotationTimer);
     dailyRotationTimer = null;
   }
-  const r = await api("/v1/daily-ad");
-  if (!r.campaign) {
-    layout('<div class="card">今天沒有輪播簽到活動。</div>');
+  const renderTabs = (campaigns = []) => `<div class="daily-top-tabs" role="tablist"><button type="button" class="daily-top-tab ${state.dailyPanel === "checkin" ? "active" : ""}" data-daily-panel="checkin">今日簽到</button>${campaigns.filter((campaign) => campaign.id !== campaigns[0]?.id).map((campaign) => `<button type="button" class="daily-top-tab ${state.dailyCampaignId === campaign.id ? "active" : ""}" data-daily-campaign="${esc(campaign.id)}">${esc(campaign.name || "簽到活動")}</button>`).join("")}<button type="button" class="daily-top-tab ${state.dailyPanel === "announcement" ? "active" : ""}" data-daily-panel="announcement">行政公告</button></div>`;
+  const bindTabs = () => {
+    document.querySelectorAll("[data-daily-panel]").forEach((button) => {
+      button.onclick = () => { state.dailyPanel = button.dataset.dailyPanel; daily(); };
+    });
+    document.querySelectorAll("[data-daily-campaign]").forEach((button) => {
+      button.onclick = () => { state.dailyPanel = "checkin"; state.dailyCampaignId = button.dataset.dailyCampaign; daily(); };
+    });
+  };
+  if (state.dailyPanel === "announcement") {
+    layout(`${renderTabs(state.daily?.campaigns || [])}<section class="card daily-announcement"><h2>行政公告</h2><p class="muted">目前尚無行政公告。</p></section>`);
+    bindTabs();
     return;
   }
-  state.daily = r;
+  const query = state.dailyCampaignId ? `?campaignId=${encodeURIComponent(state.dailyCampaignId)}` : "";
+  const r = await api(`/v1/daily-ad${query}`);
+  const campaigns = r.campaigns || [];
+  if (!state.dailyCampaignId && r.campaign?.id) state.dailyCampaignId = r.campaign.id;
+  if (!r.campaign && campaigns.length && state.dailyCampaignId) {
+    state.dailyCampaignId = campaigns[0].id;
+    return daily();
+  }
+  state.daily = { ...r, campaigns };
+  const tabs = renderTabs(campaigns);
+  if (!r.campaign) {
+    layout(`${tabs}<div class="card">今天沒有輪播簽到活動。</div>`);
+    bindTabs();
+    return;
+  }
   const completed = new Set(r.qualifiedCreativeIds || []);
   if (!r.creatives.length) {
-    layout('<div class="card">此輪播活動尚未設定素材。</div>');
+    layout(`${tabs}<div class="card">此輪播活動尚未設定素材。</div>`);
+    bindTabs();
     return;
   }
   const cards = [...r.creatives];
@@ -369,7 +395,6 @@ async function daily() {
   const cardHtml = (creative, index) => {
     const ratio = String(creative.image_aspect_ratio || "400:600").replace(":", " / ");
     const mode = creative.image_aspect_mode === "fit" ? "contain" : "cover";
-    // 百分比以會員前台 620px 容器為基準；不可使用 vw，否則桌機會被整個瀏覽器寬度放大。
     const bubbleWidths = { nano: "48%", micro: "56%", deca: "64%", hecto: "72%", kilo: "82%", mega: "92%", giga: "100%" };
     const bubbleWidth = bubbleWidths[creative.bubble_size] || bubbleWidths.nano;
     const detailLink = creative.image_link || creative.target_url;
@@ -379,9 +404,8 @@ async function daily() {
     const watchLabel = completed.has(creative.id) ? "已完成" : "開始<br>觀看";
     return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}">${media}<div class="daily-slide-body"><div class="daily-actions"><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${watchLabel}</button>${detailButton}</div>${extraButtons ? `<div class="daily-extra-actions">${extraButtons}</div>` : ""}<p class="muted watch-status"></p></div></article>`;
   };
-  layout(
-    `<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
-  );
+  layout(`${tabs}<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`);
+  bindTabs();
   document.querySelectorAll("[data-watch]").forEach((button) => {
     button.onclick = () => {
       const creative = r.creatives.find((item) => item.id === button.dataset.watch);
@@ -407,19 +431,13 @@ async function daily() {
     dailyRotationTimer = setInterval(() => {
       if (document.visibilityState !== "visible" || Date.now() < pausedUntil) return;
       const next = carousel.scrollLeft + carousel.clientWidth * 0.86;
-      if (next >= carousel.scrollWidth - carousel.clientWidth - 8) {
-        carousel.scrollTo({ left: 0, behavior: "smooth" });
-      } else {
-        carousel.scrollTo({ left: next, behavior: "smooth" });
-      }
+      if (next >= carousel.scrollWidth - carousel.clientWidth - 8) carousel.scrollTo({ left: 0, behavior: "smooth" });
+      else carousel.scrollTo({ left: next, behavior: "smooth" });
     }, 4000);
   }
   $("#checkin").onclick = async () => {
     try {
-      const x = await api("/v1/daily-ad/check-in", {
-        method: "POST",
-        body: "{}",
-      });
+      const x = await api("/v1/daily-ad/check-in", { method: "POST", body: JSON.stringify({ campaignId: r.campaign.id }) });
       alert(x.duplicate ? "今天已簽到" : "簽到成功，點數已依規則處理");
       daily();
     } catch (e) {
@@ -434,7 +452,7 @@ async function watchCreative(creative, card) {
   try {
     const s = await api("/v1/daily-ad/view-sessions", {
       method: "POST",
-      body: JSON.stringify({ creativeId: creative.id }),
+      body: JSON.stringify({ creativeId: creative.id, campaignId: state.daily?.campaign?.id || state.dailyCampaignId }),
     });
     const required = Math.max(0, Number(creative.required_watch_seconds) || 0);
     const started = Date.now();
