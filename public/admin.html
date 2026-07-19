@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MiraBeauty 營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260719-8" />
+    <link rel="stylesheet" href="/admin.css?v=20260720-1" />
   </head>
   <body>
     <div class="shell">
@@ -309,6 +309,22 @@
         </section>
 
         <section class="page" data-content="settings">
+          <section class="panel openai-settings-panel" id="openAISettingsPanel" hidden>
+            <div class="panel-head">
+              <div>
+                <h2>OpenAI API 設定</h2>
+                <p>供名片 AI 掃描辨識使用；只有系統權限管理員可以操作。</p>
+              </div>
+              <span id="openAIKeyStatus" class="api-key-status">讀取中…</span>
+            </div>
+            <div class="api-key-row">
+              <label>OpenAI API Key<input id="openAIKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="貼上 sk- 開頭的 API Key" /></label>
+              <button id="saveOpenAIKey" class="primary" type="button">儲存並驗證</button>
+              <button id="testOpenAIKey" class="secondary" type="button">測試連線</button>
+              <button id="deleteOpenAIKey" class="dangerButton" type="button">刪除後台金鑰</button>
+            </div>
+            <p class="api-key-note">金鑰會在 Worker 端加密後存入 D1；頁面、瀏覽器儲存空間與 API 回應都不會取得完整金鑰。刪除後會自動改用 Worker 環境密鑰（若有設定）。</p>
+          </section>
           <section class="panel">
             <div class="panel-head">
               <div>
@@ -334,6 +350,6 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260719-8"></script>
+    <script type="module" src="/admin.js?v=20260720-1"></script>
   </body>
 </html>
