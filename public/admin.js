@@ -61,6 +61,8 @@ async function overview() {
   try {
     const data = await api("/v1/admin/overview");
     adminAccess = data.access || null;
+    const pointNav = document.querySelector('[data-page="points"]');
+    if (pointNav) pointNav.hidden = !adminAccess?.canManagePoints;
     const x = data.overview;
     $("#metricMembers").textContent = format(x.members);
     $("#memberTotal").textContent = format(x.members);
