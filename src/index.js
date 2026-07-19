@@ -298,6 +298,23 @@ async function app(request, env) {
     }
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/admin/calendar/upload-image") {
+    const admin = await currentAdmin(request, env);
+    if (!admin) return json({ success: false, error: "Administrator access required" }, 403);
+    try {
+      const form = await request.formData();
+      const file = form.get("image");
+      if (!(file instanceof File)) return badRequest("請選擇活動圖片");
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type)) return badRequest("僅支援 JPEG、PNG、WebP 或 GIF");
+      // 瀏覽器端會先壓縮；保留足夠上限避免把可處理的原始檔直接擋掉。
+      if (file.size > 10 * 1024 * 1024) return badRequest("圖片超過 10MB，請改用較小圖片");
+      const id = newId("calendar_media");
+      await env.DB.prepare("INSERT INTO personal_card_media (id, platform_user_id, content_type, bytes) VALUES (?, ?, ?, ?)")
+        .bind(id, admin.userId, file.type, await file.arrayBuffer()).run();
+      return json({ success: true, url: `${url.origin}/v1/cards/media/${id}`, size: file.size }, 201);
+    } catch (error) { return badRequest(error.message || "活動圖片上傳失敗"); }
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/cards/me/media") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
