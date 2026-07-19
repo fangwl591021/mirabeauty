@@ -137,6 +137,7 @@ export async function getAdminAccess(db, userId, configuredSubjects) {
     canAccessAdmin: true,
     canManagePermissions: true,
     canManagePoints: true,
+    canManageRichMenu: true,
     systemAccess: true,
     operatorAccess: false,
     role: 'owner'
@@ -149,6 +150,7 @@ export async function getAdminAccess(db, userId, configuredSubjects) {
     canAccessAdmin: systemAccess || operatorAccess,
     canManagePermissions: false,
     canManagePoints: systemAccess,
+    canManageRichMenu: systemAccess,
     systemAccess,
     operatorAccess,
     role: systemAccess ? 'system' : operatorAccess ? 'operator' : 'member'
