@@ -87,14 +87,14 @@ function switchPage(page) {
   document
     .querySelectorAll("[data-page]")
     .forEach((node) =>
-      node.classList.toggle("active", node.dataset.page === page),
+      node.classList.toggle("active", node.dataset.page === (page === "calendar" ? "courses" : page)),
     );
   const names = {
     dashboard: ["營運統計中心", "MiraBeauty 會員、點數與活動即時概況"],
     members: ["會員 CRM", "LINE Login 會員與推薦關係"],
     points: ["點數規則", "建立並管理各類贈點事件"],
-    courses: ["課程／活動", "建立公開課程與簽到活動"],
-    calendar: ["課程行事曆", "MLM 月曆、活動 QR 與課程掃碼報名"],
+    courses: ["課程／活動", "活動清單、公開設定與場次管理"],
+    calendar: ["課程／活動", "行事曆、活動 QR、報名與簽到"],
     carousel: ["每日輪播贈點", "設定圖像、影片與觀看門檻"],
     richmenu: ["圖文選單管理", "上傳底圖、框選熱區並部署至 LINE"],
     settings: ["系統設定", "登入、點數錢包與導流設定"],
@@ -104,6 +104,7 @@ function switchPage(page) {
   if (page === "members") loadMembers();
   if (page === "carousel") loadCheckinTemplate();
   if (page === "points") loadPointRules();
+  if (page === "courses") loadCourses();
   if (page === "calendar") loadCalendar();
   if (page === "richmenu") loadRichMenuToken();
 }
@@ -309,13 +310,26 @@ $("#reconcilePoints").addEventListener("click", async () => {
     button.textContent = "補發既有完成條件";
   }
 });
+async function loadCourses() {
+  const container = $("#courseList");
+  if (!container) return;
+  container.innerHTML = '<p class="muted">載入中…</p>';
+  try {
+    const data = await api("/v1/admin/courses");
+    const courses = data.courses || [];
+    container.innerHTML = courses.length ? courses.map(course => `<article><div><strong>${esc(course.title || "未命名活動")}</strong><p>${esc(course.description || "尚無說明")}</p></div><span class="${course.status === "published" ? "published" : "draft"}">${course.status === "published" ? "公開" : "草稿"}</span></article>`).join("") : '<p class="muted">尚未建立課程／活動。</p>';
+  } catch (error) {
+    container.innerHTML = `<p class="danger">${esc(error.message)}</p>`;
+  }
+}
 $("#courseForm").addEventListener("submit", (event) =>
   submitForm(event, "/v1/admin/courses", () => ({
     title: $("#courseTitle").value.trim(),
     description: $("#courseDesc").value.trim(),
     status: $("#courseStatus").value,
-  })),
+  })).then(() => loadCourses()),
 );
+$("#refreshCourses")?.addEventListener("click", event => withButtonFeedback(event.currentTarget, loadCourses, { busy:"整理中…", success:"已更新" }));
 
 // Ported from MLM /console/calendar.  The UI and calendar behaviour are kept
 // intact, while MiraBeauty uses the existing course_sessions table so points,
