@@ -34,6 +34,12 @@ import {
 } from "./daily-ad.js";
 import { issueWalletToken, resolveWalletToken } from "./wallet-qr.js";
 import { getMyCard, getPublicCard, saveMyCard } from "./cards.js";
+import {
+  getLineTokenStatus,
+  handleRichMenuAction,
+  saveLineToken,
+  testSavedLineToken,
+} from "./rich-menu.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -432,6 +438,43 @@ async function app(request, env) {
       );
     if (url.pathname.startsWith("/v1/admin/point-rules") && !admin.adminAccess.canManagePoints) {
       return json({ success: false, error: "Point management permission required" }, 403);
+    }
+    if (url.pathname.startsWith("/v1/admin/rich-menu") && !admin.adminAccess.canManageRichMenu) {
+      return json({ success: false, error: "圖文選單管理權限不足" }, 403);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/rich-menu/token") {
+      return json({ success: true, ...(await getLineTokenStatus(env.DB)) });
+    }
+    if (request.method === "PUT" && url.pathname === "/v1/admin/rich-menu/token") {
+      const body = (await readJson(request)) || {};
+      try {
+        const result = await saveLineToken(env.DB, env.SESSION_SIGNING_SECRET, admin.userId, body.token);
+        await env.DB.prepare("INSERT INTO audit_logs (id, actor_user_id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, 'admin.line_token.updated', ?)")
+          .bind(newId("audit"), admin.userId, admin.userId, JSON.stringify({ bot: result.bot?.basicId || "" })).run();
+        return json({ success: true, ...result });
+      } catch (error) {
+        return badRequest(error.message || "LINE Token 儲存失敗");
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/rich-menu/token/test") {
+      try {
+        return json({ success: true, bot: await testSavedLineToken(env.DB, env.SESSION_SIGNING_SECRET) });
+      } catch (error) {
+        return badRequest(error.message || "LINE Token 驗證失敗");
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/rich-menu/action") {
+      const body = (await readJson(request)) || {};
+      try {
+        const data = await handleRichMenuAction(env.DB, env.SESSION_SIGNING_SECRET, admin.userId, body.action, body.payload || {});
+        if (body.action === "DEPLOY_RICH_MENU") {
+          await env.DB.prepare("INSERT INTO audit_logs (id, actor_user_id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, 'admin.rich_menu.deployed', ?)")
+            .bind(newId("audit"), admin.userId, admin.userId, JSON.stringify({ richMenuId: data.richMenuId || "" })).run();
+        }
+        return json({ status: "success", data });
+      } catch (error) {
+        return json({ status: "error", message: error.message || "圖文選單操作失敗" }, 400);
+      }
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/overview") {
       const [members, courses, campaigns, points, checkins] =
