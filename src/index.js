@@ -549,7 +549,7 @@ async function app(request, env) {
         });
         return json({ success: true, ...result });
       } catch (error) {
-        const message = error.message === "Insufficient point balance" ? "扣除點數不可超過目前餘額" : error.message;
+        const message = error.message === "Insufficient point balance" ? "扣除點數不可超過目前餘額" : error.message === "Adjustment reason is required" ? "請填寫贈扣點備註理由" : error.message;
         return badRequest(message || "Unable to adjust points");
       }
     }
