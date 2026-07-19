@@ -63,7 +63,9 @@ export async function listCalendarSessions(db, { from = '', to = '' } = {}) {
 export async function listAdminCourses(db) {
   const result = await db.prepare(`
     SELECT id, title, description, status, created_at, updated_at
-    FROM courses ORDER BY created_at DESC
+    FROM courses
+    WHERE id NOT LIKE 'calendar_course_%'
+    ORDER BY created_at DESC
   `).all();
   return result.results || [];
 }
