@@ -66,6 +66,7 @@ const state = {
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
+let loginInProgress = false;
 // LIFF 的 OAuth code 僅能兌換一次。整個頁面生命週期只能初始化一次，
 // 否則在名片分享時再次 init 會重新使用網址上殘留的 code，導致
 // "invalid authorization code" 而無法開啟分享對象選擇器。
@@ -161,9 +162,24 @@ async function login() {
     // 身份驗證，而不是停在原本的登入按鈕頁面等使用者再點一次。
     sessionStorage.setItem("mirabeauty_liff_login_pending", "1");
     liff.login({ redirectUri: cleanLiffRedirectUrl() });
+    // 若 LINE 沒有成功開啟授權頁，數秒後解除鎖定，讓使用者可以重試。
+    setTimeout(() => {
+      if (document.visibilityState === "visible" && !liff.isLoggedIn()) {
+        loginInProgress = false;
+        const button = $("#login");
+        if (button) {
+          button.disabled = false;
+          button.textContent = state.invite ? "加入並使用 LINE 登入" : "LINE Login";
+        }
+        const status = $("#loginStatus");
+        if (status) status.textContent = "尚未開啟 LINE 授權，請再試一次。";
+      }
+    }, 8000);
     return;
   }
   sessionStorage.removeItem("mirabeauty_liff_login_pending");
+  const status = $("#loginStatus");
+  if (status) status.textContent = "LINE 身份已確認，正在建立會員資料…";
   const idToken = liff.getIDToken();
   const lineProfile = await liff.getProfile().catch(() => null);
   const r = await api("/v1/auth/line/verify", {
@@ -183,14 +199,37 @@ async function login() {
   // 驗證完成後必須同步清除記憶體中的邀請狀態；否則 render() 會判定為
   // 「已登入會員再次開啟邀約」，又回到同一張登入卡，形成無限循環。
   state.invite = "";
+  loginInProgress = false;
   if (state.courseSession) state.tab = "courses";
   history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
 }
+async function startLogin() {
+  if (loginInProgress) return;
+  loginInProgress = true;
+  const button = $("#login");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "LINE 登入處理中…";
+  }
+  const status = $("#loginStatus");
+  if (status) status.textContent = "請稍候，不需要重複點擊。";
+  try {
+    await login();
+  } catch (error) {
+    loginInProgress = false;
+    if (button) {
+      button.disabled = false;
+      button.textContent = state.invite ? "加入並使用 LINE 登入" : "LINE Login";
+    }
+    if (status) status.textContent = "登入未完成，請重新嘗試。";
+    alert(error.message || "LINE 登入失敗");
+  }
+}
 async function renderLogin() {
   $("#app").innerHTML =
-    `<section class="hero"><h1>MiraBeauty 會員中心</h1><p>登入、點數、課程與每日任務</p></section><div class="content"><div class="card"><h2>${state.invite ? "受邀加入 MiraBeauty" : "使用 LINE 登入"}</h2><p class="muted">${state.invite ? "點擊後將使用 LINE 登入並建立推薦關係。" : "以 LINE 身份建立你的會員、邀約與點數紀錄。"}</p><button class="btn" id="login">${state.invite ? "加入並使用 LINE 登入" : "LINE Login"}</button></div></div>`;
-  $("#login").onclick = () => login().catch((e) => alert(e.message));
+    `<section class="hero"><h1>MiraBeauty 會員中心</h1><p>登入、點數、課程與每日任務</p></section><div class="content"><div class="card"><h2>${state.invite ? "受邀加入 MiraBeauty" : "使用 LINE 登入"}</h2><p class="muted">${state.invite ? "點擊後將使用 LINE 登入並建立推薦關係。" : "以 LINE 身份建立你的會員、邀約與點數紀錄。"}</p><button class="btn" id="login">${state.invite ? "加入並使用 LINE 登入" : "LINE Login"}</button><p class="muted small" id="loginStatus" aria-live="polite"></p></div></div>`;
+  $("#login").onclick = startLogin;
 }
 async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
