@@ -180,6 +180,9 @@ async function login() {
   localStorage.setItem("mirabeauty_session", state.token);
   state.member = r.member;
   sessionStorage.removeItem("mirabeauty_invite");
+  // 驗證完成後必須同步清除記憶體中的邀請狀態；否則 render() 會判定為
+  // 「已登入會員再次開啟邀約」，又回到同一張登入卡，形成無限循環。
+  state.invite = "";
   if (state.courseSession) state.tab = "courses";
   history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
