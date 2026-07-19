@@ -67,7 +67,7 @@
     <div id="right-drawer-overlay" onclick="StorageModule.toggleDrawer()" class="hidden fixed inset-0 bg-slate-800/20 z-40 backdrop-blur-sm"></div>
     <aside id="right-drawer" class="fixed right-0 top-0 h-full w-[360px] bg-[#F8F9FA] shadow-2xl translate-x-full transition-transform duration-300 z-50 flex flex-col border-l border-slate-200">
         <div class="px-6 py-5 border-b border-slate-200 flex justify-between items-center bg-white"><h2 class="font-black text-slate-800 text-lg">選單檔案庫</h2><button onclick="StorageModule.toggleDrawer()" class="text-slate-400 p-2 hover:bg-slate-50"><i class="fas fa-times"></i></button></div>
-        <div class="p-6 bg-white border-b border-slate-200 flex gap-2"><button onclick="StorageModule.saveCurrent(true)" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold shadow-md text-xs">另存新檔</button><button onclick="StorageModule.saveCurrent(false)" class="flex-1 py-3 bg-green-50 text-[#06C755] border border-[#06C755] rounded-xl font-bold text-xs">更新現有</button></div>
+        <div class="p-6 bg-white border-b border-slate-200 flex gap-2"><button onclick="StorageModule.saveCurrent(true, this)" class="flex-1 py-3 bg-slate-800 text-white rounded-xl font-bold shadow-md text-xs">另存新檔</button><button onclick="StorageModule.saveCurrent(false, this)" class="flex-1 py-3 bg-green-50 text-[#06C755] border border-[#06C755] rounded-xl font-bold text-xs">更新現有</button></div>
         <div class="flex-1 overflow-y-auto p-5 space-y-4" id="saved-files-list"></div>
     </aside>
 
@@ -474,9 +474,15 @@
             return {
                 getCurrentId: function() { return currentId; },
                 toggleDrawer: function() { const d = document.getElementById('right-drawer'); const o = document.getElementById('right-drawer-overlay'); if (d.classList.contains('translate-x-full')) { d.classList.remove('translate-x-full'); o.classList.remove('hidden'); this.renderList(); } else { d.classList.add('translate-x-full'); o.classList.add('hidden'); } },
-                saveCurrent: async function(isNew) {
+                saveCurrent: async function(isNew, button) {
+                    if (button?.disabled) return;
+                    const originalText = button?.textContent || '';
+                    if (button) { button.disabled = true; button.textContent = '儲存中...'; }
                     const base64 = MenuModule.getCurrentBase64();
-                    if(!base64) return alert('請先載入圖片');
+                    if(!base64) {
+                        if (button) { button.disabled = false; button.textContent = originalText; }
+                        return alert('請先載入圖片');
+                    }
 
                     let json = {};
                     try { json = JSON.parse(document.getElementById('json-output').value); } catch(e) {}
@@ -493,6 +499,8 @@
                         alert('✅ 儲存成功，其他 Admin 重新整理後也可看到。');
                     } catch(e) {
                         alert('❌ 儲存失敗：' + e.message);
+                    } finally {
+                        if (button) { button.disabled = false; button.textContent = originalText; }
                     }
                 },
                 loadFromIndex: function(idx) {
