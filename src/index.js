@@ -607,7 +607,9 @@ async function app(request, env) {
       templates = [...templates.filter((item) => String(item.id) !== templateId), safe];
       const campaignStatus = safe.active ? "active" : "paused";
       const statements = [
-        env.DB.prepare("DELETE FROM ad_creatives WHERE campaign_id = ?").bind(campaignId),
+        // Keep historical creative rows: daily view/check-in records reference them.
+        // Archiving lets the campaign be edited without violating those foreign keys.
+        env.DB.prepare("UPDATE ad_creatives SET status = 'archived', updated_at = CURRENT_TIMESTAMP WHERE campaign_id = ?").bind(campaignId),
         env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status, starts_at = excluded.starts_at, ends_at = excluded.ends_at, required_creative_count = excluded.required_creative_count, rotation_mode = excluded.rotation_mode, updated_at = CURRENT_TIMESTAMP").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
       ];
       safe.pages.forEach((page, index) => {
