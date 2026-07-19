@@ -357,8 +357,21 @@ async function showWalletQr(qrId, expiryId) {
 }
 async function wallet() {
   const r = await api("/v1/points/wallet");
+  const entries = r.wallet.entries || [];
+  const referrals = r.referrals || [];
+  const entryRows = entries.length
+    ? entries.map((x) => {
+        const delta = Number(x.delta || 0);
+        return `<div class="item wallet-entry"><div><b>${esc(pointEventLabel[x.event_type] || x.event_type)}</b><span class="muted">${esc(x.created_at)}</span></div><b class="wallet-delta ${delta < 0 ? "negative" : ""}">${delta > 0 ? "+" : ""}${delta}</b></div>`;
+      }).join("")
+    : '<p class="muted wallet-empty">尚無點數紀錄</p>';
+  const referralRows = referrals.length
+    ? referrals.map((x) => `<div class="item wallet-referral"><div><b>${esc(x.display_name || "新會員")}</b><span class="muted">會員編號：${esc(x.member_number || "尚未完成註冊")}</span></div><span class="muted">${esc(x.created_at)}</span></div>`).join("")
+    : '<p class="muted wallet-empty">尚無邀約成功紀錄</p>';
   layout(
-    `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div><div class="card"><h3>點數明細</h3>${r.wallet.entries.length ? r.wallet.entries.map((x) => `<div class="item"><b>${esc(pointEventLabel[x.event_type] || x.event_type)}</b><span class="row"><span class="muted">${esc(x.created_at)}</span><b>+${x.delta}</b></span></div>`).join("") : '<p class="muted">尚無點數紀錄</p>'}</div>`,
+    `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div>
+    <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${entries.length} 筆 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
+    <details class="card wallet-disclosure"><summary><span>分享成果清單</span><span class="wallet-summary-meta">共 ${referrals.length} 人 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${referralRows}</div></details>`,
   );
   $("#walletQr").onclick = () => showWalletQr("qr", "expire");
 }
