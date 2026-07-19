@@ -69,32 +69,47 @@ export async function listAdminCourses(db) {
 }
 
 export async function saveCalendarSession(db, body) {
-  const courseId = String(body.courseId || '').trim();
+  // Keep the MLM calendar contract: an activity is independently saveable.
+  // Linking it to an existing course remains optional; when no course is selected
+  // we create a published activity-course with the same title so the member
+  // catalogue, registration, attendance and point records still share one source.
+  const title = String(body.title || '').trim();
+  let courseId = String(body.courseId || '').trim();
   const mode = String(body.mode || '').trim();
   const startsAt = String(body.startsAt || '').trim();
   const endsAt = String(body.endsAt || '').trim();
   const checkinOpensAt = String(body.checkinOpensAt || '').trim();
   const checkinClosesAt = String(body.checkinClosesAt || '').trim();
-  if (!courseId || !['physical', 'online'].includes(mode) || !startsAt || !endsAt || !checkinOpensAt || !checkinClosesAt) {
+  if (!title) return { ok: false, reason: 'calendar_title_required' };
+  if (!['physical', 'online'].includes(mode) || !startsAt || !endsAt || !checkinOpensAt || !checkinClosesAt) {
     return { ok: false, reason: 'missing_calendar_fields' };
   }
   if (Date.parse(endsAt) <= Date.parse(startsAt) || Date.parse(checkinClosesAt) <= Date.parse(checkinOpensAt)) {
     return { ok: false, reason: 'invalid_calendar_range' };
   }
+
+  const id = String(body.id || '').trim() || newId('session');
+  if (!courseId) {
+    courseId = `calendar_course_${id}`;
+    await db.prepare(`
+      INSERT OR IGNORE INTO courses (id, title, description, cover_url, status, created_by_user_id)
+      VALUES (?, ?, ?, '', 'published', NULL)
+    `).bind(courseId, title, '由行事曆活動自動建立').run();
+  }
   const course = await db.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
   if (!course) return { ok: false, reason: 'course_not_found' };
-  const id = String(body.id || '').trim() || newId('session');
+
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
   if (existing) {
     const codeSql = body.checkinCode ? ', checkin_code_hash = ?' : '';
-    const binds = [courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt];
+    const binds = [courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt];
     if (body.checkinCode) binds.push(codeHash);
     binds.push(String(body.status || 'scheduled'), id);
     await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, checkin_opens_at = ?, checkin_closes_at = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
   } else {
     await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, checkin_opens_at, checkin_closes_at, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, courseId, String(body.title || ''), mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
+      .bind(id, courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
   }
   return { ok: true, id };
 }
