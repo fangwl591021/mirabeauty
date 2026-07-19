@@ -396,7 +396,7 @@ async function daily() {
     const watchLabel = completed.has(creative.id) ? "已完成" : "開始<br>觀看";
     return `<article class="daily-slide ${completed.has(creative.id) ? "complete" : ""}" data-creative-id="${esc(creative.id)}" style="--bubble-width:${bubbleWidth}">${media}<div class="daily-slide-body"><div class="daily-actions"><button class="btn watch-button" data-watch="${esc(creative.id)}" ${completed.has(creative.id) ? "disabled" : ""}>${watchLabel}</button>${detailButton}</div>${extraButtons ? `<div class="daily-extra-actions">${extraButtons}</div>` : ""}<p class="muted watch-status"></p></div></article>`;
   };
-  layout(`${tabs}<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${r.checkedIn || r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`);
+  layout(`${tabs}<div class="daily-carousel" aria-label="每日輪播活動">${cards.map(cardHtml).join("")}</div><button class="btn ${r.checkedIn ? "alt" : ""}" id="checkin" ${!r.checkedIn && r.qualifiedCreativeCount < r.campaign.requiredCreativeCount ? "disabled" : ""}>${r.checkedIn ? "今日已簽到（確認點數）" : `今日簽到（已完成 ${r.qualifiedCreativeCount}/${r.campaign.requiredCreativeCount} 項）`}</button>`);
   bindTabs();
   document.querySelectorAll("[data-watch]").forEach((button) => {
     button.onclick = () => {
@@ -430,7 +430,8 @@ async function daily() {
   $("#checkin").onclick = async () => {
     try {
       const x = await api("/v1/daily-ad/check-in", { method: "POST", body: JSON.stringify({ campaignId: r.campaign.id }) });
-      alert(x.duplicate ? "今天已簽到" : "簽到成功，點數已依規則處理");
+      const pointText = x.pointResult?.awarded ? "，點數已入帳" : x.pointResult?.duplicate ? "，點數已確認入帳" : x.pointResult?.reason === "no_active_rule" ? "，但後台尚未啟用「每日簽到」點數規則" : "";
+      alert(x.duplicate ? `今天已簽到${pointText}` : `簽到成功${pointText || "，點數已依規則處理"}`);
       daily();
     } catch (e) {
       alert(e.message);
