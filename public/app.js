@@ -125,6 +125,8 @@ if (cardShareIdFromLocation()) sessionStorage.setItem("mirabeauty_card_share_id"
 if (cardShareModeFromLocation()) sessionStorage.setItem("mirabeauty_card_share_mode", "1");
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
 const FIXED_CARD_IMAGE_LINK = "https://lin.ee/ngaHmLM";
+const DEFAULT_CARD_CHAT_ALT_TEXT = "美妝新世代、從米拉開始";
+const cardChatAltText = (card) => String(card?.chatAltText || DEFAULT_CARD_CHAT_ALT_TEXT).trim().slice(0, 300) || DEFAULT_CARD_CHAT_ALT_TEXT;
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
     ...options,
@@ -733,7 +735,7 @@ async function resumePendingCardShare() {
     }
     if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LINE 環境未提供分享通訊錄。請在 LINE Developers 的 LIFF 設定啟用 shareTargetPicker，並從 LINE 開啟此 LIFF。");
     const result = await api(`/v1/cards/${encodeURIComponent(state.pendingCardShareId)}/public`);
-    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
+    const shared = await liff.shareTargetPicker([{ type:"flex", altText:cardChatAltText(result.card), contents:cardFlex(result.card) }]);
     if (shared !== false) alert("名片已送出");
   } catch (error) {
     // 後台剛啟用 shareTargetPicker 時，舊的 LINE access token 仍可能沒有新權限。
@@ -768,7 +770,7 @@ async function shareCardFromHeader() {
     if (!await prepareCardLiff()) { redirectedToLogin = true; return; }
     if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享功能，請在 LINE Developers 啟用 shareTargetPicker");
     const result = await api(`/v1/cards/${encodeURIComponent(cardId)}/public`);
-    await liff.shareTargetPicker([{ type:"flex", altText:`${result.card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(result.card) }]);
+    await liff.shareTargetPicker([{ type:"flex", altText:cardChatAltText(result.card), contents:cardFlex(result.card) }]);
     pickerFinished = true; // 完成或取消都不要落回會員中心。
   } catch (error) {
     alert(error.message || "無法開啟名片分享通訊錄");
@@ -800,7 +802,7 @@ async function sendPersonalCardToChat(card) {
     if (error.message) throw error;
   }
   if (typeof liff.sendMessages !== "function") throw new Error("此 LINE 環境不支援聊天室傳送");
-  await liff.sendMessages([{ type:"flex", altText:`${card.displayName || "MiraBeauty 會員"} 的數位名片`, contents:cardFlex(card) }]);
+  await liff.sendMessages([{ type:"flex", altText:cardChatAltText(card), contents:cardFlex(card) }]);
   alert("已傳送到目前聊天室");
 }
 function cardContactRows(card) {
@@ -854,7 +856,7 @@ function lineSourceEcardEditor(card, selected) {
     <input id="my-v1-img-url" type="hidden" value="${esc(version.coverUrl)}"><input id="lineSourceTitle" type="hidden" value="${esc(version.versionTitle || "")}"><textarea id="lineSourceDescription" hidden>${esc(version.serviceDescription || "")}</textarea><select id="lineSourceDescriptionAlign" hidden><option value="left" ${(version.descriptionTextAlign || "left") === "left" ? "selected" : ""}>靠左</option><option value="center" ${version.descriptionTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${version.descriptionTextAlign === "right" ? "selected" : ""}>靠右</option></select><input id="lineSourceImageFile" type="file" accept="image/*" hidden>
     <div class="line-source-canvas-tools"><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
     <aside class="line-source-preview"><p>即時預覽</p><div id="my-ecard-preview-area"></div></aside>
-    <div class="line-source-share"><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(card.id))}"><div id="cardPublicQr" class="qr"></div><button id="sharePersonalCard" type="button">分享名片</button><button id="sendPersonalCard" type="button">傳送至目前聊天室</button><button id="copyCardUrl" type="button">複製名片網址</button></div>
+    <div class="line-source-share"><label>聊天室顯示文字<input id="cardChatAltText" maxlength="300" value="${esc(cardChatAltText(card))}"></label><button id="saveCardChatAltText" type="button">儲存顯示文字</button><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(card.id))}"><div id="cardPublicQr" class="qr"></div><button id="sharePersonalCard" type="button">分享名片</button><button id="sendPersonalCard" type="button">傳送至目前聊天室</button><button id="copyCardUrl" type="button">複製名片網址</button></div>
   </section>`;
 }
 function renderLineSourceButtons() {}
@@ -880,7 +882,9 @@ async function persistLineSourceCard(context) {
     buttonDefaultsSeeded:true
   };
   versions[id] = next;
-  await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...card, selectedVersion:id, versions, status:"published" }) });
+  const chatAltText = cardChatAltText({ chatAltText:$("#cardChatAltText")?.value || card.chatAltText });
+  await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...card, chatAltText, selectedVersion:id, versions, status:"published" }) });
+  card.chatAltText = chatAltText;
   card.versions = versions;
   Object.assign(selected, next);
 }
@@ -959,7 +963,7 @@ async function card() {
   const tabs = `<div class="business-card-tabs"><button data-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button></div>`;
   let panel = "";
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(myCard)}<div class="business-card-contact-actions">${cardActionItems(myCard).map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
-  if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label>服務文字對齊<select id="cardServiceTextAlign"><option value="left" ${myCard.serviceTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${myCard.serviceTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${myCard.serviceTextAlign === "right" ? "selected" : ""}>靠右</option></select></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
+  if (view === "edit") panel = `<form id="cardForm" class="business-card-form"><label>姓名<input id="cardDisplayName" value="${esc(myCard.displayName)}" required></label><label>英文名<input id="cardEnglishName" value="${esc(myCard.englishName)}"></label><label>公司名稱<input id="cardCompanyName" value="${esc(myCard.companyName)}"></label><label>職稱<input id="cardJobTitle" value="${esc(myCard.jobTitle)}"></label><label>部門<input id="cardDepartment" value="${esc(myCard.department)}"></label><label>手機號碼<input id="cardMobile" value="${esc(myCard.mobile)}"></label><label>公司電話<input id="cardCompanyPhone" value="${esc(myCard.companyPhone)}"></label><label>電子郵件<input id="cardEmail" type="email" value="${esc(myCard.email)}"></label><label>公司網站<input id="cardWebsiteUrl" type="url" placeholder="https://" value="${esc(myCard.websiteUrl)}"></label><label>LINE 連結<input id="cardLineUrl" type="url" placeholder="https://lin.ee/..." value="${esc(myCard.lineUrl)}"></label><label>公司地址<input id="cardAddress" value="${esc(myCard.address)}"></label><label class="full">聊天室顯示文字<input id="cardChatAltTextBasic" maxlength="300" value="${esc(cardChatAltText(myCard))}"></label><label class="full">服務項目<textarea id="cardServiceDescription" rows="4">${esc(myCard.serviceDescription)}</textarea></label><label>服務文字對齊<select id="cardServiceTextAlign"><option value="left" ${myCard.serviceTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${myCard.serviceTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${myCard.serviceTextAlign === "right" ? "selected" : ""}>靠右</option></select></label><label class="full">名片封面圖片網址<input id="cardCoverUrl" type="url" placeholder="https://..." value="${esc(myCard.coverUrl)}"></label><div class="full card-buttons-setting"><div class="row"><strong>自訂按鈕</strong><button type="button" class="mini-btn" id="addCardButton">新增按鈕</button></div><div id="cardButtonRows">${(myCard.buttons || []).map(customButtonEditor).join("")}</div></div><button class="btn full" type="submit">儲存名片</button></form>`;
   if (view === "digital") {
     const selected = state.cardVersion && cardVersionMeta[state.cardVersion]
       ? { id:state.cardVersion, ...(myCard.versions?.[state.cardVersion] || {}), ...cardVersionMeta[state.cardVersion] }
@@ -976,7 +980,7 @@ async function card() {
         displayName: $("#cardDisplayName").value, englishName: $("#cardEnglishName").value, companyName: $("#cardCompanyName").value,
         jobTitle: $("#cardJobTitle").value, department: $("#cardDepartment").value, mobile: $("#cardMobile").value,
         companyPhone: $("#cardCompanyPhone").value, email: $("#cardEmail").value, websiteUrl: $("#cardWebsiteUrl").value,
-        lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value, serviceTextAlign: $("#cardServiceTextAlign").value,
+        lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, chatAltText: $("#cardChatAltTextBasic").value, serviceDescription: $("#cardServiceDescription").value, serviceTextAlign: $("#cardServiceTextAlign").value,
         coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), versions:myCard.versions, selectedVersion:myCard.selectedVersion, status:"published"
       }) }),{busy:"儲存中…",success:"已儲存"});
       state.cardView = "contact"; alert("名片已儲存"); await card();
@@ -996,6 +1000,7 @@ async function card() {
     const updatePreview = () => { renderLineSourcePreview(myCard, selected, versionButtons); bindWysiwygCardCanvas(updatePreview, editorContext); };
     editorContext.updatePreview = updatePreview;
     updatePreview();
+    $("#saveCardChatAltText").onclick = async () => { const button=$("#saveCardChatAltText"); try { await withActionFeedback(button,()=>persistLineSourceCard(editorContext),{busy:"儲存中…",success:"已儲存"}); } catch(error) { alert(error.message || "聊天室顯示文字儲存失敗"); } };
     $("#my-v1-img-url")?.addEventListener("input", updatePreview);
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id, async () => { await persistLineSourceCard(editorContext); }); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
