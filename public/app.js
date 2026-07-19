@@ -797,7 +797,23 @@ function renderLineSourcePreview(card, selected) {
   const desc = $("#lineSourceDescription")?.value.trim() || card.serviceDescription || "";
   const descriptionAlign = $("#lineSourceDescriptionAlign")?.value || selected.descriptionTextAlign || "left";
   const buttons = collectCardButtons(); const ratio = selected.id === "full" ? "2/3" : selected.id === "square" ? "1/1" : "20/13";
-  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div>${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<div class="line-source-preview-body"><strong>${esc(title)}</strong><span style="text-align:${esc(descriptionAlign)}">${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button)=>`<span style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</span>`).join("")}</div>` : ""}</div>`;
+  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div><button type="button" class="line-source-preview-cover" data-ecard-edit="cover" aria-label="更換封面圖片">${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<em>點擊更換封面</em></button><div class="line-source-preview-body"><strong contenteditable="true" spellcheck="false" data-ecard-edit="title" aria-label="編輯版面標題">${esc(title)}</strong><span contenteditable="true" spellcheck="false" data-ecard-edit="description" style="text-align:${esc(descriptionAlign)}" aria-label="編輯版面說明">${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button,index)=>`<button type="button" data-ecard-edit="button" data-ecard-button-index="${index}" style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</button>`).join("")}</div>` : ""}</div>`;
+}
+function bindWysiwygCardCanvas(updatePreview) {
+  const canvas = $("#my-ecard-preview-area"); if (!canvas) return;
+  canvas.querySelector('[data-ecard-edit="cover"]')?.addEventListener("click", () => $("#lineSourceImageFile")?.click());
+  const title = canvas.querySelector('[data-ecard-edit="title"]');
+  const description = canvas.querySelector('[data-ecard-edit="description"]');
+  title?.addEventListener("input", () => { const field=$("#lineSourceTitle"); if (field) field.value=title.innerText.trim(); });
+  description?.addEventListener("input", () => { const field=$("#lineSourceDescription"); if (field) field.value=description.innerText.trim(); });
+  canvas.querySelectorAll('[data-ecard-edit="button"]').forEach((button) => button.addEventListener("click", () => {
+    const rows = [...document.querySelectorAll("#my-v1-buttons-list [data-card-button-row]")];
+    const row = rows[Number(button.dataset.ecardButtonIndex)];
+    if (!row) return;
+    row.classList.remove("collapsed");
+    row.querySelector("[data-line-toggle]")?.replaceChildren("收合");
+    row.scrollIntoView({ behavior:"smooth", block:"center" });
+  }));
 }
 async function card() {
   const result = await api("/v1/cards/me");
@@ -844,7 +860,7 @@ async function card() {
     $("#sendPersonalCard").onclick = () => sendPersonalCardToChat(myCard).catch((error) => alert(error.message));
     document.querySelectorAll('input[name="my-ecard-layout"]').forEach((input) => input.onchange = () => { state.cardVersion=input.value; state.cardView="digital"; card(); });
     const versionButtons = structuredClone(myCard.versions?.[selected.id]?.buttons || []);
-    const updatePreview = () => renderLineSourcePreview(myCard, selected);
+    const updatePreview = () => { renderLineSourcePreview(myCard, selected); bindWysiwygCardCanvas(updatePreview); };
     renderLineSourceButtons(versionButtons, updatePreview); updatePreview();
     ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription", "#lineSourceDescriptionAlign"].forEach((selector) => {
       const field = $(selector);
