@@ -66,6 +66,7 @@ const POINT_RULE_EVENTS = new Set([
   'share_referral',
   'course_registered',
   'attendance_verified',
+  'referral_attendance_reward',
   'task_completed',
 ]);
 
@@ -813,7 +814,7 @@ async function app(request, env) {
       const [members, profiles, referrals, checkins, registrations, attendance] = await env.DB.batch([
         env.DB.prepare("SELECT id FROM platform_users WHERE status = 'active'"),
         env.DB.prepare("SELECT platform_user_id FROM member_profiles WHERE profile_completed_at IS NOT NULL AND profile_completed_at != ''"),
-        env.DB.prepare("SELECT referrer_user_id, referred_user_id FROM referral_relationships WHERE status = 'active'"),
+        env.DB.prepare("SELECT rr.referrer_user_id, rr.referred_user_id FROM referral_relationships rr JOIN platform_users pu ON pu.id = rr.referrer_user_id AND pu.status = 'active' WHERE rr.status = 'active'"),
         env.DB.prepare("SELECT platform_user_id, campaign_id, business_date FROM daily_checkins WHERE status = 'verified'"),
         env.DB.prepare("SELECT platform_user_id, course_session_id FROM course_registrations WHERE status = 'registered'"),
         env.DB.prepare("SELECT platform_user_id, course_session_id, id FROM attendance_records WHERE status = 'verified'"),
@@ -825,6 +826,16 @@ async function app(request, env) {
         ...(checkins.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "daily_ad_checkin", eventReference: `${row.campaign_id}:${row.business_date}`, idempotencyKey: `daily_ad_checkin:${row.campaign_id}:${row.business_date}:${row.platform_user_id}` })),
         ...(registrations.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "course_registered", eventReference: row.course_session_id, idempotencyKey: `course_registered:${row.course_session_id}:${row.platform_user_id}` })),
         ...(attendance.results || []).map((row) => ({ userId: row.platform_user_id, eventType: "attendance_verified", eventReference: row.course_session_id, idempotencyKey: `attendance_verified:${row.course_session_id}:${row.platform_user_id}`, metadata: { attendanceId: row.id } })),
+        ...(attendance.results || []).flatMap((row) => {
+          const relationship = (referrals.results || []).find((item) => item.referred_user_id === row.platform_user_id);
+          return relationship ? [{
+            userId: relationship.referrer_user_id,
+            eventType: "referral_attendance_reward",
+            eventReference: row.course_session_id,
+            idempotencyKey: `referral_attendance_reward:${row.course_session_id}:${row.platform_user_id}`,
+            metadata: { referredUserId: row.platform_user_id, attendanceId: row.id },
+          }] : [];
+        }),
       ];
       let awarded = 0;
       let skipped = 0;
