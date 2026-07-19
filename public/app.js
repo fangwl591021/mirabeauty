@@ -763,10 +763,9 @@ function lineSourceEcardEditor(card, selected) {
   return `<section id="my-ecard-edit-state" class="line-source-ecard">
     <div class="line-source-ecard-top"><p>設定後即可在首頁一鍵發送數位名片</p><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button></div>
     <div class="line-source-ecard-panel">
+      <input id="my-v1-img-url" type="hidden" value="${esc(version.coverUrl)}"><input id="lineSourceTitle" type="hidden" value="${esc(version.versionTitle || "")}"><textarea id="lineSourceDescription" hidden>${esc(version.serviceDescription || "")}</textarea><input id="lineSourceImageFile" type="file" accept="image/*" hidden>
       <div><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
-      <div class="line-source-section"><p class="line-source-label">封面圖片</p><div class="line-source-image-row"><input id="my-v1-img-url" placeholder="https://" value="${esc(version.coverUrl)}"><button type="button" id="lineSourceUpload">上傳</button><input id="lineSourceImageFile" type="file" accept="image/*" hidden></div></div>
-      <label class="line-source-field"><span>版面標題</span><input id="lineSourceTitle" value="${esc(version.versionTitle || "")}" placeholder="預設使用姓名"></label>
-      <label class="line-source-field"><span>版面說明</span><textarea id="lineSourceDescription" rows="5" placeholder="預設使用服務項目">${esc(version.serviceDescription || "")}</textarea></label>
+      <p class="line-source-direct-hint">直接點擊預覽名片的封面、標題或說明，即可編輯。</p>
       <label class="line-source-field"><span>版面說明對齊</span><select id="lineSourceDescriptionAlign"><option value="left" ${version.descriptionTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${version.descriptionTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${version.descriptionTextAlign === "right" ? "selected" : ""}>靠右</option></select></label>
       <div class="line-source-buttons"><div class="line-source-buttons-head"><p class="line-source-label">底部按鈕設定</p><button type="button" id="lineSourceAddButton">＋ 新增按鈕</button></div><div id="my-v1-buttons-list"></div></div>
       <button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button>
@@ -868,7 +867,6 @@ async function card() {
       field?.addEventListener("change", updatePreview);
     });
     $("#lineSourceAddButton").onclick = () => { if(versionButtons.length >= 4) return alert("最多可設定 4 個按鈕"); versionButtons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); renderLineSourceButtons(versionButtons,updatePreview); updatePreview(); };
-    $("#lineSourceUpload").onclick = () => $("#lineSourceImageFile").click();
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
     $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:collectCardButtons(), buttonDefaultsSeeded:true }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
