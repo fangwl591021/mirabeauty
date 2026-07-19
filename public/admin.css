@@ -470,7 +470,7 @@ body.template-page{background:#f5f7fb;overflow:auto}body.template-page .sidebar,
 .templateDesigner{position:relative;overflow:visible;padding:18px;background:#fff}
 .templateDesigner>.checkinDirectoryPanel{margin:0}
 .templateDrawerBackdrop{position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.34);opacity:0;visibility:hidden;transition:opacity .24s ease,visibility .24s ease}
-.templateDesignerGrid{position:fixed;z-index:91;top:0;right:0;bottom:0;width:min(1180px,94vw);display:grid;grid-template-columns:minmax(440px,51%) minmax(420px,49%);min-height:100vh;overflow-y:auto;background:#fff;box-shadow:-16px 0 38px rgba(15,23,42,.2);transform:translateX(104%);visibility:hidden;transition:transform .28s ease,visibility .28s ease}
+.templateDesignerGrid{position:fixed;z-index:91;inset:0;width:100vw;height:100vh;display:grid;grid-template-columns:minmax(440px,51%) minmax(420px,49%);min-height:100vh;overflow-y:auto;background:#fff;box-shadow:none;transform:translateX(104%);visibility:hidden;transition:transform .28s ease,visibility .28s ease}
 .templateDesigner.editor-open .templateDrawerBackdrop{opacity:1;visibility:visible}
 .templateDesigner.editor-open .templateDesignerGrid{transform:translateX(0);visibility:visible}
 .templateDrawerHead{position:sticky;top:0;z-index:4;grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 20px;border-bottom:1px solid #e6ebf2;background:#fff;color:#17365d;font-size:18px}
