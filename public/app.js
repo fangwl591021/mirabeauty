@@ -70,7 +70,7 @@ let loginInProgress = false;
 // 必須在 liff.init() 消耗 OAuth 參數前先記住是否為登入回跳。
 const liffLoginCallbackAtLoad = (() => {
   const params = new URLSearchParams(location.search);
-  return params.has("code") && params.has("state");
+  return params.get("loginResume") === "1" || (params.has("code") && params.has("state"));
 })();
 // LIFF 的 OAuth code 僅能兌換一次。整個頁面生命週期只能初始化一次，
 // 否則在名片分享時再次 init 會重新使用網址上殘留的 code，導致
@@ -84,6 +84,13 @@ function cleanLiffRedirectUrl() {
     try { redirect = new URL(encodedState, location.origin); } catch { /* retain current URL */ }
   }
   ["code", "state", "scope", "error", "error_description", "liff.state", "liff.referrer"].forEach((key) => redirect.searchParams.delete(key));
+  return redirect.toString();
+}
+function liffLoginRedirectUrl() {
+  const redirect = new URL(cleanLiffRedirectUrl());
+  // LINE 內建瀏覽器重新建立 WebView 時可能不保留 session/localStorage，
+  // 因此把一次性的續登入訊號直接放進回跳網址。
+  redirect.searchParams.set("loginResume", "1");
   return redirect.toString();
 }
 function hasPendingLiffLogin() {
@@ -177,7 +184,7 @@ async function login() {
     // LINE Login 完成後會重新載入 LIFF；保留標記，讓 boot() 自動續跑
     // 身份驗證，而不是停在原本的登入按鈕頁面等使用者再點一次。
     markLiffLoginPending();
-    liff.login({ redirectUri: cleanLiffRedirectUrl() });
+    liff.login({ redirectUri: liffLoginRedirectUrl() });
     // 若 LINE 沒有成功開啟授權頁，數秒後解除鎖定，讓使用者可以重試。
     setTimeout(() => {
       if (document.visibilityState === "visible" && !liff.isLoggedIn()) {
