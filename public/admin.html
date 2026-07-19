@@ -214,14 +214,13 @@
         <section class="page" data-content="calendar">
           <section class="panel calendar-panel">
             <div class="panel-head">
-              <div><h2>課程行事曆</h2><p>完全沿用 MLM 的月曆、活動時間窗與固定 QR 流程；活動資料直接連動現有課程與點數。</p></div>
+              <div><h2>課程行事曆</h2><p>管理活動日期、時間窗、固定 QR 報到、會員報名與點數。</p></div>
               <div class="calendar-actions"><button class="outline" id="calendarNew" type="button">複製活動</button><button class="outline" id="calendarRefresh" type="button">重新同步</button></div>
             </div>
             <div class="calendar-editor" id="calendarEditor" hidden>
               <div class="calendar-editor-head"><strong id="calendarEditorTitle">新增活動</strong><button class="outline" id="calendarClose" type="button">收合</button></div>
               <input id="calendarEventId" type="hidden">
               <div class="calendar-form-grid">
-                <label>所屬課程（選填）<select id="calendarCourseId"></select></label>
                 <label>場次名稱<input id="calendarSessionTitle" placeholder="例如 7 月會員說明會"></label>
                 <label>模式<select id="calendarMode"><option value="physical">現場</option><option value="online">線上</option></select></label>
                 <label>活動日期<input id="calendarEventDate" type="date"></label>
@@ -293,6 +292,6 @@
       </main>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260719-4"></script>
+    <script type="module" src="/admin.js?v=20260719-5"></script>
   </body>
 </html>
