@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MiraBeauty 營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260719-4" />
+    <link rel="stylesheet" href="/admin.css?v=20260719-6" />
   </head>
   <body>
     <div class="shell">
@@ -33,6 +33,9 @@
           </button>
           <button class="nav-item" data-page="carousel">
             <span>▤</span> 每日輪播贈點
+          </button>
+          <button class="nav-item" data-page="richmenu">
+            <span>▱</span> 圖文選單
           </button>
         </nav>
         <p class="side-label">系統</p>
@@ -274,6 +277,27 @@
           </article>
         </section>
 
+        <section class="page rich-menu-page" data-content="richmenu">
+          <section class="panel rich-menu-token-panel">
+            <div class="panel-head">
+              <div>
+                <h2>LINE 圖文選單</h2>
+                <p>請輸入 Messaging API 的 Channel Access Token；儲存後由後端代為呼叫 LINE。</p>
+              </div>
+              <span id="richMenuTokenStatus" class="rich-menu-token-status">尚未設定 Token</span>
+            </div>
+            <div class="rich-menu-token-row">
+              <label>Channel Access Token<input id="richMenuToken" type="password" autocomplete="new-password" placeholder="貼上長效 Channel Access Token" /></label>
+              <button id="saveRichMenuToken" class="primary" type="button">儲存並驗證</button>
+              <button id="testRichMenuToken" class="secondary" type="button">測試連線</button>
+            </div>
+            <p class="rich-menu-token-note">Token 會以加密形式儲存在 D1，不會顯示於頁面、瀏覽器儲存空間或 API 回應。</p>
+          </section>
+          <section class="rich-menu-editor-panel">
+            <iframe id="richMenuFrame" src="/rich-menu.html?v=20260719-1" title="LINE 圖文選單編輯器"></iframe>
+          </section>
+        </section>
+
         <section class="page" data-content="settings">
           <section class="panel">
             <div class="panel-head">
@@ -292,6 +316,6 @@
       </main>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260719-5"></script>
+    <script type="module" src="/admin.js?v=20260719-6"></script>
   </body>
 </html>
