@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MiraBeauty 營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260719-6" />
+    <link rel="stylesheet" href="/admin.css?v=20260719-7" />
   </head>
   <body>
     <div class="shell">
@@ -27,9 +27,6 @@
           </button>
           <button class="nav-item" data-page="courses">
             <span>▣</span> 課程／活動
-          </button>
-          <button class="nav-item" data-page="calendar">
-            <span>◫</span> 課程行事曆
           </button>
           <button class="nav-item" data-page="carousel">
             <span>▤</span> 每日輪播贈點
@@ -189,6 +186,10 @@
         </section>
 
         <section class="page" data-content="courses">
+          <nav class="course-module-tabs" aria-label="課程與活動檢視">
+            <button class="active" type="button" data-go="courses">活動清單</button>
+            <button type="button" data-go="calendar">行事曆</button>
+          </nav>
           <section class="panel form-panel">
             <div class="panel-head">
               <div>
@@ -212,9 +213,17 @@
               ><button class="primary" type="submit">建立課程</button>
             </form>
           </section>
+          <section class="panel">
+            <div class="panel-head"><div><h2>既有課程／活動</h2><p>查看已建立的課程及公開狀態。</p></div><button class="secondary" id="refreshCourses" type="button">重新整理</button></div>
+            <div id="courseList" class="course-list"></div>
+          </section>
         </section>
 
         <section class="page" data-content="calendar">
+          <nav class="course-module-tabs" aria-label="課程與活動檢視">
+            <button type="button" data-go="courses">活動清單</button>
+            <button class="active" type="button" data-go="calendar">行事曆</button>
+          </nav>
           <section class="panel calendar-panel">
             <div class="panel-head">
               <div><h2>課程行事曆</h2><p>管理活動日期、時間窗、固定 QR 報到、會員報名與點數。</p></div>
@@ -316,6 +325,6 @@
       </main>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260719-6"></script>
+    <script type="module" src="/admin.js?v=20260719-7"></script>
   </body>
 </html>
