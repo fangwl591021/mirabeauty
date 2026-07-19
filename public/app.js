@@ -80,6 +80,9 @@ function cleanLiffRedirectUrl() {
   ["code", "state", "scope", "error", "error_description", "liff.state", "liff.referrer"].forEach((key) => redirect.searchParams.delete(key));
   return redirect.toString();
 }
+function hasPendingLiffLogin() {
+  return sessionStorage.getItem("mirabeauty_liff_login_pending") === "1";
+}
 async function initLiffOnce() {
   if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
   if (!window.liff) throw new Error("LINE LIFF 尚未載入，請從 LINE 重新開啟會員中心");
@@ -154,9 +157,13 @@ function layout(body) {
 async function login() {
   await initLiffOnce();
   if (!liff.isLoggedIn()) {
+    // LINE Login 完成後會重新載入 LIFF；保留標記，讓 boot() 自動續跑
+    // 身份驗證，而不是停在原本的登入按鈕頁面等使用者再點一次。
+    sessionStorage.setItem("mirabeauty_liff_login_pending", "1");
     liff.login({ redirectUri: cleanLiffRedirectUrl() });
     return;
   }
+  sessionStorage.removeItem("mirabeauty_liff_login_pending");
   const idToken = liff.getIDToken();
   const lineProfile = await liff.getProfile().catch(() => null);
   const r = await api("/v1/auth/line/verify", {
@@ -949,6 +956,11 @@ async function profile(required = false) {
 }
 async function boot() {
   state.config = await (await fetch("/api/config")).json();
+  if (hasPendingLiffLogin()) {
+    $("#app").innerHTML = `<section class="center">正在完成 LINE 登入…</section>`;
+    await login();
+    return;
+  }
   await render();
 }
 boot().catch((e) => {
