@@ -5,6 +5,7 @@ const CARD_COLUMNS = `
   mobile, company_phone, email, website_url, line_url, address, service_description,
   cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
 `;
+const DEFAULT_CARD_COVER_URL = '/card-default-cover.jpg';
 const DEFAULT_SERVICE_DESCRIPTION = `源自對美的熱愛創立了米拉
 專注研發天然安全保養彩妝
 嚴格品質把關貼近肌膚需求
@@ -96,7 +97,7 @@ function parseVersions(row) {
     const buttonDefaultsSeeded = source.buttonDefaultsSeeded === true;
     const buttons = seedDefaultButtons(storedButtons, defaults, buttonDefaultsSeeded);
     result[version] = {
-      coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048),
+      coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048) || DEFAULT_CARD_COVER_URL,
       title: text(source.title, 120),
       description: text(source.description, 1600),
       serviceTextAlign: normaliseTextAlign(source.serviceTextAlign),
@@ -138,71 +139,3 @@ function cardFromRow(row, publicView = false) {
     descriptionTextAlign: normaliseTextAlign(selected.descriptionTextAlign),
     coverUrl: selected.coverUrl,
     buttons: selected.buttons.filter((button) => button?.enabled !== false),
-    selectedVersion,
-    versions,
-    status: row.status,
-    updatedAt: row.updated_at,
-  };
-  return publicView ? card : { ...card, userId: row.platform_user_id, createdAt: row.created_at };
-}
-
-export async function getMyCard(db, userId) {
-  const row = await db.prepare(`SELECT ${CARD_COLUMNS} FROM personal_cards WHERE platform_user_id = ? AND status != 'archived'`).bind(userId).first();
-  return cardFromRow(row);
-}
-
-export async function saveMyCard(db, userId, payload, member) {
-  const existing = await getMyCard(db, userId);
-  const displayName = text(payload.displayName || existing?.displayName || member?.displayName, 120);
-  if (!displayName) throw new Error('姓名為必填');
-  const values = {
-    displayName,
-    englishName: text(payload.englishName, 120),
-    companyName: text(payload.companyName, 180),
-    jobTitle: text(payload.jobTitle, 120),
-    department: text(payload.department, 120),
-    mobile: text(payload.mobile || existing?.mobile || member?.phone, 40),
-    companyPhone: text(payload.companyPhone, 40),
-    email: text(payload.email || existing?.email || member?.email, 320),
-    websiteUrl: normaliseUrl(payload.websiteUrl, '公司網站'),
-    lineUrl: normaliseUrl(payload.lineUrl, 'LINE 連結'),
-    address: text(payload.address, 300),
-    serviceDescription: text(payload.serviceDescription || existing?.serviceDescription || DEFAULT_SERVICE_DESCRIPTION, 1600),
-    serviceTextAlign: normaliseTextAlign(payload.serviceTextAlign || existing?.serviceTextAlign),
-    selectedVersion: CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing?.selectedVersion || 'standard'),
-    versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
-    status: ['draft', 'published'].includes(payload.status) ? payload.status : 'published',
-  };
-  const defaults = defaultCardButtons(values);
-  CARD_VERSIONS.forEach((version) => {
-    if (!values.versions[version].buttons.length) values.versions[version].buttons = defaults;
-    // 服務項目是共用內容；三種名片版型必須維持同一個文字對齊設定。
-    values.versions[version].serviceTextAlign = values.serviceTextAlign;
-  });
-  const id = existing?.id || newId('card');
-  const selected = values.versions[values.selectedVersion] || values.versions.standard;
-  await db.prepare(`
-    INSERT INTO personal_cards (
-      id, platform_user_id, display_name, english_name, company_name, job_title, department,
-      mobile, company_phone, email, website_url, line_url, address, service_description,
-      cover_url, buttons_json, selected_version, versions_json, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(platform_user_id) DO UPDATE SET
-      display_name = excluded.display_name, english_name = excluded.english_name,
-      company_name = excluded.company_name, job_title = excluded.job_title, department = excluded.department,
-      mobile = excluded.mobile, company_phone = excluded.company_phone, email = excluded.email,
-      website_url = excluded.website_url, line_url = excluded.line_url, address = excluded.address,
-      service_description = excluded.service_description, cover_url = excluded.cover_url,
-      buttons_json = excluded.buttons_json, selected_version = excluded.selected_version,
-      versions_json = excluded.versions_json, status = excluded.status, updated_at = CURRENT_TIMESTAMP
-  `).bind(id, userId, values.displayName, values.englishName, values.companyName, values.jobTitle, values.department,
-    values.mobile, values.companyPhone, values.email, values.websiteUrl, values.lineUrl, values.address,
-    values.serviceDescription, selected.coverUrl, JSON.stringify(selected.buttons), values.selectedVersion,
-    JSON.stringify(values.versions), values.status).run();
-  return getMyCard(db, userId);
-}
-
-export async function getPublicCard(db, id) {
-  const row = await db.prepare(`SELECT ${CARD_COLUMNS} FROM personal_cards WHERE id = ? AND status = 'published'`).bind(id).first();
-  return cardFromRow(row, true);
-}
