@@ -760,59 +760,77 @@ function renderDigitalCardPreview(card, selected) {
 // kept as its own source-shaped block, with only storage calls adapted to MiraBeauty.
 function lineSourceEcardEditor(card, selected) {
   const version = cardWithVersion(card, selected.id);
-  return `<section id="my-ecard-edit-state" class="line-source-ecard">
-    <div class="line-source-ecard-top"><p>設定後即可在首頁一鍵發送數位名片</p><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button></div>
-    <div class="line-source-ecard-panel">
-      <input id="my-v1-img-url" type="hidden" value="${esc(version.coverUrl)}"><input id="lineSourceTitle" type="hidden" value="${esc(version.versionTitle || "")}"><textarea id="lineSourceDescription" hidden>${esc(version.serviceDescription || "")}</textarea><input id="lineSourceImageFile" type="file" accept="image/*" hidden>
-      <div><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
-      <p class="line-source-direct-hint">直接點擊預覽名片的封面、標題或說明，即可編輯。</p>
-      <label class="line-source-field"><span>版面說明對齊</span><select id="lineSourceDescriptionAlign"><option value="left" ${version.descriptionTextAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${version.descriptionTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${version.descriptionTextAlign === "right" ? "selected" : ""}>靠右</option></select></label>
-      <div class="line-source-buttons"><div class="line-source-buttons-head"><p class="line-source-label">底部按鈕設定</p><button type="button" id="lineSourceAddButton">＋ 新增按鈕</button></div><div id="my-v1-buttons-list"></div></div>
-      <button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button>
-    </div>
+  return `<section id="my-ecard-edit-state" class="line-source-ecard line-source-ecard-canvas">
+    <div class="line-source-ecard-top"><p>點擊名片中的封面、文字或按鈕即可直接編輯。</p><div><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button><button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button></div></div>
+    <input id="my-v1-img-url" type="hidden" value="${esc(version.coverUrl)}"><input id="lineSourceTitle" type="hidden" value="${esc(version.versionTitle || "")}"><textarea id="lineSourceDescription" hidden>${esc(version.serviceDescription || "")}</textarea><input id="lineSourceImageFile" type="file" accept="image/*" hidden>
+    <div class="line-source-canvas-tools"><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
     <aside class="line-source-preview"><p>即時預覽</p><div id="my-ecard-preview-area"></div></aside>
     <div class="line-source-share"><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(card.id))}"><div id="cardPublicQr" class="qr"></div><button id="sharePersonalCard" type="button">分享名片</button><button id="sendPersonalCard" type="button">傳送至目前聊天室</button><button id="copyCardUrl" type="button">複製名片網址</button></div>
   </section>`;
 }
-function renderLineSourceButtons(buttons, onChange) {
-  const holder = $("#my-v1-buttons-list"); if (!holder) return;
-  if (!buttons.length) { holder.innerHTML = `<p class="line-source-empty">尚未設定任何按鈕</p>`; return; }
-  holder.innerHTML = buttons.map((button, index) => `<article class="line-source-button collapsed" data-card-button-row><div class="line-source-button-head"><strong>按鈕 ${index + 1}</strong><span><button type="button" data-line-toggle>展開</button><button type="button" data-line-remove="${index}">刪除</button></span></div><div class="line-source-button-fields"><label>按鈕顏色<span><input type="color" data-card-button-color-picker value="${esc(button.color || "#B96072")}"><input data-card-button-color value="${esc(button.color || "#B96072")}"></span></label><label>按鈕文字<input data-card-button-label value="${esc(button.label || "")}" placeholder="例如：加入 LINE 好友"></label><label>連結類型<select data-card-button-type><option value="url" ${button.type === "url" ? "selected" : ""}>網址</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select></label><label>網址／電話／LINE 連結<input data-card-button-value value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/, ""))}" placeholder="https://... 或 tel:0927..."></label><div class="line-source-button-order"><button type="button" data-line-move="-1" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-line-move="1" ${index === buttons.length - 1 ? "disabled" : ""}>↓</button></div></div></article>`).join("");
-  const sync = () => onChange?.();
-  holder.querySelectorAll("input,select").forEach((input) => input.addEventListener("input", sync));
-  holder.querySelectorAll("[data-card-button-color-picker]").forEach((picker) => picker.addEventListener("input", () => { picker.parentElement.querySelector("[data-card-button-color]").value=picker.value; sync(); }));
-  holder.querySelectorAll("[data-line-toggle]").forEach((button) => button.onclick = () => {
-    const card = button.closest("[data-card-button-row]");
-    const collapsed = card?.classList.toggle("collapsed");
-    button.textContent = collapsed ? "展開" : "收合";
-  });
-  holder.querySelectorAll("[data-line-remove]").forEach((button) => button.onclick = () => { buttons.splice(Number(button.dataset.lineRemove),1); renderLineSourceButtons(buttons,onChange); sync(); });
-  holder.querySelectorAll("[data-line-move]").forEach((button) => button.onclick = () => { const index=Array.from(holder.querySelectorAll("[data-line-move]")).indexOf(button); const source=Math.floor(index/2); const target=source+Number(button.dataset.lineMove); if(target>=0&&target<buttons.length){ const item=buttons.splice(source,1)[0]; buttons.splice(target,0,item); renderLineSourceButtons(buttons,onChange); sync(); } });
+function renderLineSourceButtons() {}
+function ensureLineSourceCardEditor() {
+  let modal = $("#lineSourceCardEditor");
+  if (modal) return modal;
+  document.body.insertAdjacentHTML("beforeend", `<div id="lineSourceCardEditor" class="line-source-editor-modal" role="dialog" aria-modal="true"><section class="line-source-editor-sheet"><header><h3 id="lineSourceEditorTitle">編輯名片</h3><button type="button" id="closeLineSourceEditor" aria-label="關閉">×</button></header><div id="lineSourceEditorBody"></div></section></div>`);
+  modal = $("#lineSourceCardEditor");
+  $("#closeLineSourceEditor").onclick = () => modal.classList.remove("open");
+  return modal;
 }
-function renderLineSourcePreview(card, selected) {
+function openLineSourceCardEditor(kind, context, index = -1) {
+  const modal = ensureLineSourceCardEditor(), title = $("#lineSourceEditorTitle"), body = $("#lineSourceEditorBody");
+  const { selected, buttons, updatePreview } = context;
+  const close = () => modal.classList.remove("open");
+  const apply = () => { updatePreview(); close(); };
+  modal.classList.add("open");
+  if (kind === "cover") {
+    title.textContent = "更換封面圖片";
+    body.innerHTML = `<p class="line-source-editor-note">請選擇並裁切圖片；會依目前版型自動裁切。</p><div class="line-source-editor-actions"><button type="button" class="line-source-editor-primary" id="lineSourcePickImage">上傳裁切</button><button type="button" id="lineSourceCoverDone">完成</button></div>`;
+    $("#lineSourcePickImage").onclick = () => $("#lineSourceImageFile")?.click();
+    $("#lineSourceCoverDone").onclick = apply;
+    return;
+  }
+  if (kind === "title") {
+    title.textContent = "修改版面標題";
+    body.innerHTML = `<label class="line-source-editor-field">版面標題<input id="lineSourceEditTitle" value="${esc($("#lineSourceTitle")?.value || "")}"></label><button type="button" class="line-source-editor-primary" id="lineSourceApplyTitle">套用</button>`;
+    $("#lineSourceApplyTitle").onclick = () => { $("#lineSourceTitle").value = $("#lineSourceEditTitle").value.trim(); apply(); };
+    return;
+  }
+  if (kind === "description") {
+    title.textContent = "修改版面說明";
+    const currentAlign = $("#lineSourceDescriptionAlign")?.value || "left";
+    body.innerHTML = `<label class="line-source-editor-field">版面說明<textarea id="lineSourceEditDescription" rows="6">${esc($("#lineSourceDescription")?.value || "")}</textarea></label><label class="line-source-editor-field">文字對齊<select id="lineSourceEditDescriptionAlign"><option value="left" ${currentAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${currentAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${currentAlign === "right" ? "selected" : ""}>靠右</option></select></label><button type="button" class="line-source-editor-primary" id="lineSourceApplyDescription">套用</button>`;
+    $("#lineSourceApplyDescription").onclick = () => { $("#lineSourceDescription").value = $("#lineSourceEditDescription").value.trim(); $("#lineSourceDescriptionAlign").value = $("#lineSourceEditDescriptionAlign").value; apply(); };
+    return;
+  }
+  if (kind === "button") {
+    const button = buttons[index] || { label:"", type:"url", value:"", color:"#B96072" };
+    title.textContent = `設定按鈕 ${index + 1}`;
+    body.innerHTML = `<label class="line-source-editor-field">按鈕文字<input id="lineSourceEditButtonLabel" value="${esc(button.label || "")}"></label><label class="line-source-editor-field">連結類型<select id="lineSourceEditButtonType"><option value="url" ${button.type === "url" ? "selected" : ""}>網站連結</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select></label><label class="line-source-editor-field">網址／電話／LINE 連結<input id="lineSourceEditButtonValue" value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/,""))}"></label><label class="line-source-editor-field">按鈕顏色<input id="lineSourceEditButtonColor" type="color" value="${esc(button.color || "#B96072")}"></label><div class="line-source-editor-actions"><button type="button" class="line-source-editor-danger" id="lineSourceDeleteButton">刪除</button><button type="button" class="line-source-editor-primary" id="lineSourceApplyButton">套用</button></div>`;
+    $("#lineSourceApplyButton").onclick = () => { buttons[index] = { label:$("#lineSourceEditButtonLabel").value.trim(), type:$("#lineSourceEditButtonType").value, value:$("#lineSourceEditButtonValue").value.trim(), color:$("#lineSourceEditButtonColor").value }; apply(); };
+    $("#lineSourceDeleteButton").onclick = () => { buttons.splice(index, 1); apply(); };
+    return;
+  }
+  title.textContent = "新增按鈕";
+  body.innerHTML = `<p class="line-source-editor-note">最多可設定 4 個自訂按鈕。</p><button type="button" class="line-source-editor-primary" id="lineSourceAddButton">＋ 新增按鈕</button>`;
+  $("#lineSourceAddButton").onclick = () => { if (buttons.length >= 4) return alert("最多可設定 4 個自訂按鈕"); buttons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); updatePreview(); openLineSourceCardEditor("button", context, buttons.length - 1); };
+}
+function renderLineSourcePreview(card, selected, buttons = []) {
   const preview = $("#my-ecard-preview-area"); if (!preview) return;
   const cover = $("#my-v1-img-url")?.value.trim() || "";
   const title = $("#lineSourceTitle")?.value.trim() || card.displayName;
   const desc = $("#lineSourceDescription")?.value.trim() || card.serviceDescription || "";
   const descriptionAlign = $("#lineSourceDescriptionAlign")?.value || selected.descriptionTextAlign || "left";
-  const buttons = collectCardButtons(); const ratio = selected.id === "full" ? "2/3" : selected.id === "square" ? "1/1" : "20/13";
-  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div><button type="button" class="line-source-preview-cover" data-ecard-edit="cover" aria-label="更換封面圖片">${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}<em>點擊更換封面</em></button><div class="line-source-preview-body"><strong contenteditable="true" spellcheck="false" data-ecard-edit="title" aria-label="編輯版面標題">${esc(title)}</strong><span contenteditable="true" spellcheck="false" data-ecard-edit="description" style="text-align:${esc(descriptionAlign)}" aria-label="編輯版面說明">${esc(desc)}</span></div>${buttons.length ? `<div class="line-source-preview-footer">${buttons.slice(0,4).map((button,index)=>`<button type="button" data-ecard-edit="button" data-ecard-button-index="${index}" style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</button>`).join("")}</div>` : ""}</div>`;
+  const ratio = selected.id === "full" ? "2/3" : selected.id === "square" ? "1/1" : "20/13";
+  preview.innerHTML = `<div class="line-source-preview-card"><div class="line-source-preview-share">分享</div><button type="button" class="line-source-preview-cover" data-ecard-edit="cover" aria-label="更換封面圖片">${cover ? `<img style="aspect-ratio:${ratio}" src="${esc(cover)}" alt="名片封面">` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${avatar()}</div>`}</button><div class="line-source-preview-body"><button type="button" data-ecard-edit="title">${esc(title)}</button><button type="button" data-ecard-edit="description" style="text-align:${esc(descriptionAlign)}">${esc(desc)}</button></div><div class="line-source-preview-footer">${buttons.slice(0,4).map((button,index)=>`<button type="button" data-ecard-edit="button" data-ecard-button-index="${index}" style="background:${esc(button.color || "#B96072")}">${esc(button.label || "按鈕")}</button>`).join("")}<button type="button" class="line-source-preview-add-button" data-ecard-edit="add-button">＋ 新增按鈕</button></div></div>`;
 }
-function bindWysiwygCardCanvas(updatePreview) {
+function bindWysiwygCardCanvas(updatePreview, context) {
   const canvas = $("#my-ecard-preview-area"); if (!canvas) return;
-  canvas.querySelector('[data-ecard-edit="cover"]')?.addEventListener("click", () => $("#lineSourceImageFile")?.click());
-  const title = canvas.querySelector('[data-ecard-edit="title"]');
-  const description = canvas.querySelector('[data-ecard-edit="description"]');
-  title?.addEventListener("input", () => { const field=$("#lineSourceTitle"); if (field) field.value=title.innerText.trim(); });
-  description?.addEventListener("input", () => { const field=$("#lineSourceDescription"); if (field) field.value=description.innerText.trim(); });
-  canvas.querySelectorAll('[data-ecard-edit="button"]').forEach((button) => button.addEventListener("click", () => {
-    const rows = [...document.querySelectorAll("#my-v1-buttons-list [data-card-button-row]")];
-    const row = rows[Number(button.dataset.ecardButtonIndex)];
-    if (!row) return;
-    row.classList.remove("collapsed");
-    row.querySelector("[data-line-toggle]")?.replaceChildren("收合");
-    row.scrollIntoView({ behavior:"smooth", block:"center" });
-  }));
+  canvas.querySelector('[data-ecard-edit="cover"]')?.addEventListener("click", () => openLineSourceCardEditor("cover", context));
+  canvas.querySelector('[data-ecard-edit="title"]')?.addEventListener("click", () => openLineSourceCardEditor("title", context));
+  canvas.querySelector('[data-ecard-edit="description"]')?.addEventListener("click", () => openLineSourceCardEditor("description", context));
+  canvas.querySelectorAll('[data-ecard-edit="button"]').forEach((button) => button.addEventListener("click", () => openLineSourceCardEditor("button", context, Number(button.dataset.ecardButtonIndex))));
+  canvas.querySelector('[data-ecard-edit="add-button"]')?.addEventListener("click", () => openLineSourceCardEditor("add", context));
 }
 async function card() {
   const result = await api("/v1/cards/me");
@@ -859,17 +877,14 @@ async function card() {
     $("#sendPersonalCard").onclick = () => sendPersonalCardToChat(myCard).catch((error) => alert(error.message));
     document.querySelectorAll('input[name="my-ecard-layout"]').forEach((input) => input.onchange = () => { state.cardVersion=input.value; state.cardView="digital"; card(); });
     const versionButtons = structuredClone(myCard.versions?.[selected.id]?.buttons || []);
-    const updatePreview = () => { renderLineSourcePreview(myCard, selected); bindWysiwygCardCanvas(updatePreview); };
-    renderLineSourceButtons(versionButtons, updatePreview); updatePreview();
-    ["#my-v1-img-url", "#lineSourceTitle", "#lineSourceDescription", "#lineSourceDescriptionAlign"].forEach((selector) => {
-      const field = $(selector);
-      field?.addEventListener("input", updatePreview);
-      field?.addEventListener("change", updatePreview);
-    });
-    $("#lineSourceAddButton").onclick = () => { if(versionButtons.length >= 4) return alert("最多可設定 4 個按鈕"); versionButtons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); renderLineSourceButtons(versionButtons,updatePreview); updatePreview(); };
+    const editorContext = { card:myCard, selected, buttons:versionButtons, updatePreview:null };
+    const updatePreview = () => { renderLineSourcePreview(myCard, selected, versionButtons); bindWysiwygCardCanvas(updatePreview, editorContext); };
+    editorContext.updatePreview = updatePreview;
+    updatePreview();
+    $("#my-v1-img-url")?.addEventListener("input", updatePreview);
     $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
-    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:collectCardButtons(), buttonDefaultsSeeded:true }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
+    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:$("#lineSourceDescriptionAlign").value, buttons:versionButtons.filter((button) => button.label || button.value), buttonDefaultsSeeded:true }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
