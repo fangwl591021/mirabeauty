@@ -95,3 +95,40 @@ export async function awardPoints(db, { userId, eventType, eventReference, idemp
   }
   return { awarded: true, duplicate: false, entry };
 }
+
+export async function adjustPoints(db, { userId, actorUserId, action, points, note = '', requestId }) {
+  const amount = Number(points);
+  if (!['grant', 'deduct', 'backfill'].includes(action)) throw new Error('Invalid point adjustment action');
+  if (!Number.isInteger(amount) || amount <= 0 || amount > 1000000) throw new Error('Points must be an integer between 1 and 1000000');
+  const safeRequestId = String(requestId || '').trim().slice(0, 120);
+  if (!safeRequestId) throw new Error('requestId is required');
+  const idempotencyKey = `admin_points:${safeRequestId}`;
+  const existing = await db.prepare('SELECT id, delta, balance_after FROM point_ledger_entries WHERE idempotency_key = ?')
+    .bind(idempotencyKey).first();
+  if (existing) return { adjusted: false, duplicate: true, entry: existing };
+
+  let account = await db.prepare('SELECT id, balance FROM point_accounts WHERE platform_user_id = ? AND program_id = ?')
+    .bind(userId, MAIN_PROGRAM_ID).first();
+  if (!account) {
+    await db.prepare('INSERT OR IGNORE INTO point_accounts (id, platform_user_id, program_id) VALUES (?, ?, ?)')
+      .bind(newId('pointacct'), userId, MAIN_PROGRAM_ID).run();
+    account = await db.prepare('SELECT id, balance FROM point_accounts WHERE platform_user_id = ? AND program_id = ?')
+      .bind(userId, MAIN_PROGRAM_ID).first();
+  }
+  const delta = action === 'deduct' ? -amount : amount;
+  const balanceAfter = Number(account.balance) + delta;
+  if (balanceAfter < 0) throw new Error('Insufficient point balance');
+  const eventType = action === 'deduct' ? 'admin_points_deduct' : action === 'backfill' ? 'admin_points_backfill' : 'admin_points_grant';
+  const entry = { id: newId('ledger'), delta, balanceAfter };
+  const metadata = JSON.stringify({ actorUserId, action, note: String(note || '').trim().slice(0, 500) });
+  await db.batch([
+    db.prepare('UPDATE point_accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(balanceAfter, account.id),
+    db.prepare(`INSERT INTO point_ledger_entries
+      (id, point_account_id, platform_user_id, program_id, point_rule_id, event_type, event_reference, idempotency_key, delta, balance_after, metadata_json)
+      VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`)
+      .bind(entry.id, account.id, userId, MAIN_PROGRAM_ID, eventType, safeRequestId, idempotencyKey, delta, balanceAfter, metadata),
+    db.prepare('INSERT INTO audit_logs (id, actor_user_id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, ?, ?)')
+      .bind(newId('audit'), actorUserId, userId, `points.${action}`, metadata),
+  ]);
+  return { adjusted: true, duplicate: false, entry };
+}
