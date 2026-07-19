@@ -47,13 +47,20 @@ export async function awardPoints(db, { userId, eventType, eventReference, idemp
     if (existingAward) return { awarded: false, reason: 'once_only_reached' };
   }
 
-  if (frequency === 'daily' || (rule.daily_limit !== null && rule.daily_limit !== undefined)) {
+  // 「每日一次」規則未設定 daily_limit 時，預設上限必須是 1；
+  // Number(null) 會變成 0，會讓第一筆簽到就被錯判為額度已滿。
+  const configuredDailyLimit = Number(rule.daily_limit);
+  const hasConfiguredDailyLimit = Number.isFinite(configuredDailyLimit) && configuredDailyLimit > 0;
+  if (frequency === 'daily' || hasConfiguredDailyLimit) {
+    const dailyLimit = frequency === 'daily'
+      ? (hasConfiguredDailyLimit ? configuredDailyLimit : 1)
+      : configuredDailyLimit;
     const count = await db.prepare(`
       SELECT COUNT(*) AS count FROM point_ledger_entries
       WHERE platform_user_id = ? AND point_rule_id = ? AND status = 'posted'
         AND date(created_at, '+8 hours') = date('now', '+8 hours')
     `).bind(userId, rule.id).first();
-    if (Number(count?.count || 0) >= Number(rule.daily_limit)) return { awarded: false, reason: 'daily_limit_reached' };
+    if (Number(count?.count || 0) >= dailyLimit) return { awarded: false, reason: 'daily_limit_reached' };
   }
 
   let account = await db.prepare(`
