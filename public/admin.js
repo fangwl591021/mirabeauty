@@ -63,6 +63,8 @@ async function overview() {
     adminAccess = data.access || null;
     const pointNav = document.querySelector('[data-page="points"]');
     if (pointNav) pointNav.hidden = !adminAccess?.canManagePoints;
+    const richMenuNav = document.querySelector('[data-page="richmenu"]');
+    if (richMenuNav) richMenuNav.hidden = !adminAccess?.canManageRichMenu;
     const x = data.overview;
     $("#metricMembers").textContent = format(x.members);
     $("#memberTotal").textContent = format(x.members);
@@ -94,6 +96,7 @@ function switchPage(page) {
     courses: ["課程／活動", "建立公開課程與簽到活動"],
     calendar: ["課程行事曆", "MLM 月曆、活動 QR 與課程掃碼報名"],
     carousel: ["每日輪播贈點", "設定圖像、影片與觀看門檻"],
+    richmenu: ["圖文選單管理", "上傳底圖、框選熱區並部署至 LINE"],
     settings: ["系統設定", "登入、點數錢包與導流設定"],
   };
   $("#pageTitle").textContent = names[page][0];
@@ -102,6 +105,49 @@ function switchPage(page) {
   if (page === "carousel") loadCheckinTemplate();
   if (page === "points") loadPointRules();
   if (page === "calendar") loadCalendar();
+  if (page === "richmenu") loadRichMenuToken();
+}
+function renderRichMenuTokenStatus(data) {
+  const status = $("#richMenuTokenStatus");
+  if (!status) return;
+  const bot = data?.bot?.displayName || data?.bot?.basicId || "";
+  status.textContent = data?.configured
+    ? `已設定 ${data.masked || ""}${bot ? ` · ${bot}` : ""}`
+    : "尚未設定 Token";
+  status.classList.toggle("configured", Boolean(data?.configured));
+}
+async function loadRichMenuToken() {
+  try {
+    renderRichMenuTokenStatus(await api("/v1/admin/rich-menu/token"));
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+}
+async function saveRichMenuToken(button) {
+  const input = $("#richMenuToken");
+  const value = String(input?.value || "").trim();
+  if (!value) return showStatus("請輸入 LINE Channel Access Token", "error");
+  try {
+    await withButtonFeedback(button, async () => {
+      const result = await api("/v1/admin/rich-menu/token", { token: value }, "PUT");
+      input.value = "";
+      renderRichMenuTokenStatus(result);
+      showStatus(`Token 已驗證並儲存${result.bot?.displayName ? `：${result.bot.displayName}` : ""}`);
+    }, { busy: "驗證儲存中…", success: "已儲存" });
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
+}
+async function testRichMenuToken(button) {
+  try {
+    await withButtonFeedback(button, async () => {
+      const result = await api("/v1/admin/rich-menu/token/test", {});
+      renderRichMenuTokenStatus({ configured: true, bot: result.bot });
+      showStatus(`LINE 連線正常${result.bot?.displayName ? `：${result.bot.displayName}` : ""}`);
+    }, { busy: "測試連線中…", success: "連線正常" });
+  } catch (error) {
+    showStatus(error.message, "error");
+  }
 }
 let crmMembers = [];
 const memberAvatar = (member) => member.picture_url ? `<img class="crm-avatar" src="${esc(member.picture_url)}" alt="">` : `<span class="crm-avatar crm-avatar-empty">${esc((member.display_name || "會").slice(0, 1))}</span>`;
@@ -194,6 +240,8 @@ $("#refreshMembers").addEventListener("click", (event) =>
   withButtonFeedback(event.currentTarget, loadMembers, { busy:"整理中…", success:"已更新" }),
 );
 $("#memberSearch").addEventListener("input", renderMembers);
+$("#saveRichMenuToken")?.addEventListener("click", event => saveRichMenuToken(event.currentTarget));
+$("#testRichMenuToken")?.addEventListener("click", event => testRichMenuToken(event.currentTarget));
 $("#logout").addEventListener("click", () => {
   localStorage.removeItem("mirabeauty_session");
   location.href = "/";
