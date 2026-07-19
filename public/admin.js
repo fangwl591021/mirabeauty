@@ -257,7 +257,7 @@ $("#ruleForm").addEventListener("submit", (event) =>
   })).then(() => loadPointRules()),
 );
 const ruleFrequencyLabel = { once:"僅一次", daily:"每日一次", per_completion:"完成給一次" };
-const ruleEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"簽到打卡", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"任務完成", admin_points_grant:"後台贈點", admin_points_deduct:"後台扣點", admin_points_backfill:"補登舊點數", daily_ad_view:"簽到觀看", daily_ad_view_completed:"簽到觀看", daily_view:"簽到觀看" };
+const ruleEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"簽到打卡", course_registered:"課程報名", attendance_verified:"課程簽到", referral_attendance_reward:"所屬會員完成獎勵", task_completed:"任務完成", admin_points_grant:"後台贈點", admin_points_deduct:"後台扣點", admin_points_backfill:"補登舊點數", daily_ad_view:"簽到觀看", daily_ad_view_completed:"簽到觀看", daily_view:"簽到觀看" };
 async function loadPointRules() {
   const container = $("#ruleList");
   if (!container) return;
