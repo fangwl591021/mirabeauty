@@ -601,7 +601,7 @@ function ensureCardCropperModal() {
   document.body.insertAdjacentHTML("beforeend", `<div class="card-cropper-modal" id="cardCropperModal" role="dialog" aria-modal="true"><div class="card-cropper-sheet"><div class="card-cropper-head"><strong>裁切封面圖片</strong><button type="button" id="closeCardCropper">×</button></div><div class="card-cropper-stage"><img id="cardCropperImage" alt="裁切圖片"></div><div class="card-cropper-tools"><button type="button" data-crop-action="zoom-out">縮小</button><button type="button" data-crop-action="zoom-in">放大</button><button type="button" data-crop-action="rotate">旋轉</button><button type="button" data-crop-action="reset">重設</button></div><div class="card-cropper-actions"><button type="button" class="btn alt" id="cancelCardCropper">取消</button><button type="button" class="btn" id="confirmCardCropper">確認裁切</button></div></div></div>`);
   return $("#cardCropperModal");
 }
-async function openCardCropper(file, versionId) {
+async function openCardCropper(file, versionId, afterUpload = null) {
   if (!window.Cropper) throw new Error("裁切器載入失敗，請確認網路後重新開啟頁面");
   if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
   const modal = ensureCardCropperModal(); const image = $("#cardCropperImage");
@@ -612,7 +612,7 @@ async function openCardCropper(file, versionId) {
   await new Promise((resolve,reject) => { image.onload=resolve; image.onerror=reject; });
   cardCropper?.destroy(); cardCropper = new Cropper(image, { aspectRatio:width / height, viewMode:1, dragMode:"move", autoCropArea:.92, cropBoxMovable:true, cropBoxResizable:true, zoomable:true, zoomOnTouch:true, zoomOnWheel:true, movable:true, responsive:true, background:false, guides:true, center:true, highlight:false });
   modal.querySelectorAll("[data-crop-action]").forEach((button) => button.onclick = () => { const action=button.dataset.cropAction; if (action === "zoom-in") cardCropper.zoom(.1); if (action === "zoom-out") cardCropper.zoom(-.1); if (action === "rotate") cardCropper.rotate(90); if (action === "reset") cardCropper.reset(); });
-  $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#my-v1-img-url") || $("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); close(); alert("圖片已裁切並上傳，請按儲存名片設定"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
+  $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#my-v1-img-url") || $("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); if (typeof afterUpload === "function") await afterUpload(imageUrl); close(); alert("圖片已裁切並儲存"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
 }
 async function prepareCardLiff() {
   await initLiffOnce();
@@ -761,7 +761,7 @@ function renderDigitalCardPreview(card, selected) {
 function lineSourceEcardEditor(card, selected) {
   const version = cardWithVersion(card, selected.id);
   return `<section id="my-ecard-edit-state" class="line-source-ecard line-source-ecard-canvas">
-    <div class="line-source-ecard-top"><p>點擊名片中的封面、文字或按鈕即可直接編輯。</p><div><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button><button id="btn-save-my-ecard" type="button" class="line-source-save">儲存名片設定</button></div></div>
+    <div class="line-source-ecard-top"><p>點擊名片中的封面、文字或按鈕即可直接編輯；每次確認會立即儲存。</p><div><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button></div></div>
     <input id="my-v1-img-url" type="hidden" value="${esc(version.coverUrl)}"><input id="lineSourceTitle" type="hidden" value="${esc(version.versionTitle || "")}"><textarea id="lineSourceDescription" hidden>${esc(version.serviceDescription || "")}</textarea><select id="lineSourceDescriptionAlign" hidden><option value="left" ${(version.descriptionTextAlign || "left") === "left" ? "selected" : ""}>靠左</option><option value="center" ${version.descriptionTextAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${version.descriptionTextAlign === "right" ? "selected" : ""}>靠右</option></select><input id="lineSourceImageFile" type="file" accept="image/*" hidden>
     <div class="line-source-canvas-tools"><p class="line-source-label">名片版型</p><div class="line-source-layouts">${Object.entries(cardVersionMeta).map(([id, meta]) => `<label><input type="radio" name="my-ecard-layout" value="${id}" ${id === selected.id ? "checked" : ""}><span>${meta.label}</span></label>`).join("")}</div></div>
     <aside class="line-source-preview"><p>即時預覽</p><div id="my-ecard-preview-area"></div></aside>
@@ -777,44 +777,69 @@ function ensureLineSourceCardEditor() {
   $("#closeLineSourceEditor").onclick = () => modal.classList.remove("open");
   return modal;
 }
+async function persistLineSourceCard(context) {
+  const { card, selected, buttons } = context;
+  const id = selected.id;
+  const versions = structuredClone(card.versions || {});
+  const next = {
+    ...(versions[id] || {}),
+    coverUrl: $("#my-v1-img-url")?.value.trim() || "",
+    title: $("#lineSourceTitle")?.value.trim() || "",
+    description: $("#lineSourceDescription")?.value.trim() || "",
+    descriptionTextAlign: $("#lineSourceDescriptionAlign")?.value || selected.descriptionTextAlign || "left",
+    buttons: buttons.filter((button) => button.label || button.value),
+    buttonDefaultsSeeded:true
+  };
+  versions[id] = next;
+  await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...card, selectedVersion:id, versions, status:"published" }) });
+  card.versions = versions;
+  Object.assign(selected, next);
+}
 function openLineSourceCardEditor(kind, context, index = -1) {
   const modal = ensureLineSourceCardEditor(), title = $("#lineSourceEditorTitle"), body = $("#lineSourceEditorBody");
   const { selected, buttons, updatePreview } = context;
   const close = () => modal.classList.remove("open");
-  const apply = () => { updatePreview(); close(); };
+  const apply = async () => {
+    try {
+      updatePreview();
+      await persistLineSourceCard(context);
+      close();
+      alert("名片已儲存");
+    } catch (error) {
+      alert(error.message || "名片儲存失敗");
+    }
+  };
   modal.classList.add("open");
   if (kind === "cover") {
     title.textContent = "更換封面圖片";
     body.innerHTML = `<p class="line-source-editor-note">請選擇並裁切圖片；會依目前版型自動裁切。</p><div class="line-source-editor-actions"><button type="button" class="line-source-editor-primary" id="lineSourcePickImage">上傳裁切</button><button type="button" id="lineSourceCoverDone">完成</button></div>`;
     $("#lineSourcePickImage").onclick = () => $("#lineSourceImageFile")?.click();
-    $("#lineSourceCoverDone").onclick = apply;
+    $("#lineSourceCoverDone").onclick = () => apply();
     return;
   }
   if (kind === "title") {
     title.textContent = "修改版面標題";
     body.innerHTML = `<label class="line-source-editor-field">版面標題<input id="lineSourceEditTitle" value="${esc($("#lineSourceTitle")?.value || "")}"></label><button type="button" class="line-source-editor-primary" id="lineSourceApplyTitle">套用</button>`;
-    $("#lineSourceApplyTitle").onclick = () => { $("#lineSourceTitle").value = $("#lineSourceEditTitle").value.trim(); apply(); };
+    $("#lineSourceApplyTitle").onclick = async () => { $("#lineSourceTitle").value = $("#lineSourceEditTitle").value.trim(); await apply(); };
     return;
   }
   if (kind === "description") {
     title.textContent = "修改版面說明";
     const currentAlign = $("#lineSourceDescriptionAlign")?.value || "left";
     body.innerHTML = `<label class="line-source-editor-field">版面說明<textarea id="lineSourceEditDescription" rows="6">${esc($("#lineSourceDescription")?.value || "")}</textarea></label><label class="line-source-editor-field">文字對齊<select id="lineSourceEditDescriptionAlign"><option value="left" ${currentAlign === "left" ? "selected" : ""}>靠左</option><option value="center" ${currentAlign === "center" ? "selected" : ""}>置中</option><option value="right" ${currentAlign === "right" ? "selected" : ""}>靠右</option></select></label><button type="button" class="line-source-editor-primary" id="lineSourceApplyDescription">套用</button>`;
-    $("#lineSourceApplyDescription").onclick = () => { $("#lineSourceDescription").value = $("#lineSourceEditDescription").value.trim(); $("#lineSourceDescriptionAlign").value = $("#lineSourceEditDescriptionAlign").value; apply(); };
+    $("#lineSourceApplyDescription").onclick = async () => { $("#lineSourceDescription").value = $("#lineSourceEditDescription").value.trim(); $("#lineSourceDescriptionAlign").value = $("#lineSourceEditDescriptionAlign").value; await apply(); };
     return;
   }
   if (kind === "button") {
-    const button = buttons[index] || { label:"", type:"url", value:"", color:"#B96072" };
-    title.textContent = `設定按鈕 ${index + 1}`;
-    body.innerHTML = `<label class="line-source-editor-field">按鈕文字<input id="lineSourceEditButtonLabel" value="${esc(button.label || "")}"></label><label class="line-source-editor-field">連結類型<select id="lineSourceEditButtonType"><option value="url" ${button.type === "url" ? "selected" : ""}>網站連結</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select></label><label class="line-source-editor-field">網址／電話／LINE 連結<input id="lineSourceEditButtonValue" value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/,""))}"></label><label class="line-source-editor-field">按鈕顏色<input id="lineSourceEditButtonColor" type="color" value="${esc(button.color || "#B96072")}"></label><div class="line-source-editor-actions"><button type="button" class="line-source-editor-danger" id="lineSourceDeleteButton">刪除</button><button type="button" class="line-source-editor-primary" id="lineSourceApplyButton">套用</button></div>`;
-    $("#lineSourceApplyButton").onclick = () => { buttons[index] = { label:$("#lineSourceEditButtonLabel").value.trim(), type:$("#lineSourceEditButtonType").value, value:$("#lineSourceEditButtonValue").value.trim(), color:$("#lineSourceEditButtonColor").value }; apply(); };
-    $("#lineSourceDeleteButton").onclick = () => { buttons.splice(index, 1); apply(); };
+    const isNew = index < 0;
+    const button = isNew ? { label:"新按鈕", type:"url", value:"", color:"#B96072" } : (buttons[index] || { label:"", type:"url", value:"", color:"#B96072" });
+    title.textContent = isNew ? "新增按鈕" : `設定按鈕 ${index + 1}`;
+    body.innerHTML = `<label class="line-source-editor-field">按鈕文字<input id="lineSourceEditButtonLabel" value="${esc(button.label || "")}"></label><label class="line-source-editor-field">連結類型<select id="lineSourceEditButtonType"><option value="url" ${button.type === "url" ? "selected" : ""}>網站連結</option><option value="phone" ${button.type === "phone" ? "selected" : ""}>電話</option><option value="email" ${button.type === "email" ? "selected" : ""}>Email</option><option value="line" ${button.type === "line" ? "selected" : ""}>LINE 連結</option><option value="map" ${button.type === "map" ? "selected" : ""}>地圖</option></select></label><label class="line-source-editor-field">網址／電話／LINE 連結<input id="lineSourceEditButtonValue" value="${esc(String(button.value || "").replace(/^(tel:|mailto:)/,""))}"></label><label class="line-source-editor-field">按鈕顏色<input id="lineSourceEditButtonColor" type="color" value="${esc(button.color || "#B96072")}"></label><div class="line-source-editor-actions">${isNew ? "" : `<button type="button" class="line-source-editor-danger" id="lineSourceDeleteButton">刪除</button>`}<button type="button" class="line-source-editor-primary" id="lineSourceApplyButton">確認並儲存</button></div>`;
+    $("#lineSourceApplyButton").onclick = async () => { const next={ label:$("#lineSourceEditButtonLabel").value.trim(), type:$("#lineSourceEditButtonType").value, value:$("#lineSourceEditButtonValue").value.trim(), color:$("#lineSourceEditButtonColor").value }; if (isNew) buttons.push(next); else buttons[index] = next; await apply(); };
+    $("#lineSourceDeleteButton")?.addEventListener("click", async () => { buttons.splice(index, 1); await apply(); });
     return;
   }
-  title.textContent = "新增按鈕";
-  body.innerHTML = `<p class="line-source-editor-note">最多可設定 4 個自訂按鈕。</p><button type="button" class="line-source-editor-primary" id="lineSourceAddButton">＋ 新增按鈕</button>`;
-  $("#lineSourceAddButton").onclick = () => { if (buttons.length >= 4) return alert("最多可設定 4 個自訂按鈕"); buttons.push({label:"新按鈕",type:"url",value:"",color:"#B96072"}); updatePreview(); openLineSourceCardEditor("button", context, buttons.length - 1); };
-}
+  openLineSourceCardEditor("button", context, -1);
 function renderLineSourcePreview(card, selected, buttons = []) {
   const preview = $("#my-ecard-preview-area"); if (!preview) return;
   const cover = $("#my-v1-img-url")?.value.trim() || "";
@@ -882,9 +907,8 @@ async function card() {
     editorContext.updatePreview = updatePreview;
     updatePreview();
     $("#my-v1-img-url")?.addEventListener("input", updatePreview);
-    $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id); } catch(e) { alert(e.message); } };
+    $("#lineSourceImageFile").onchange = async () => { try { const file=$("#lineSourceImageFile").files?.[0]; if(!file) return; await openCardCropper(file,selected.id, async () => { await persistLineSourceCard(editorContext); }); } catch(e) { alert(e.message); } };
     $("#showMyCardQr").onclick = () => $("#cardPublicQr")?.scrollIntoView({behavior:"smooth",block:"center"});
-    $("#btn-save-my-ecard").onclick = async () => { try { const id = selected.id; const versions = structuredClone(myCard.versions || {}); versions[id] = { ...(versions[id] || {}), coverUrl:$("#my-v1-img-url").value.trim(), title:$("#lineSourceTitle").value.trim(), description:$("#lineSourceDescription").value.trim(), descriptionTextAlign:($("#lineSourceDescriptionAlign")?.value || selected.descriptionTextAlign || "left"), buttons:versionButtons.filter((button) => button.label || button.value), buttonDefaultsSeeded:true }; await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({ ...myCard, selectedVersion:id, versions, status:"published" }) }); alert("名片設定已儲存"); state.cardVersion=id; await card(); } catch(e) { alert(e.message); } };
   }
 }
 async function publicCard() {
