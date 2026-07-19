@@ -183,25 +183,7 @@ function layout(body) {
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div></header>`;
   const memberHeader = state.tab === "home" ? "" : featureHeader;
   $("#app").innerHTML =
-    `${memberHeader}<div class="content">${state.tab === "home" ? "" : portalMenu()}${body}</div><nav class="nav">${[
-      ["home", "首頁"],
-      ["wallet", "錢包"],
-      ["courses", "課程"],
-      ["daily", "每日"],
-      ["profile", "我的"],
-    ]
-      .map(
-        ([id, n]) =>
-          `<button class="${state.tab === id ? "active" : ""}" data-tab="${id}">${n}</button>`,
-      )
-      .join("")}</nav>`;
-  document.querySelectorAll("[data-tab]").forEach(
-    (x) =>
-      (x.onclick = () => {
-        state.tab = x.dataset.tab;
-        render();
-      }),
-  );
+    `${memberHeader}<div class="content">${state.tab === "home" ? "" : portalMenu()}${body}</div>`;
   bindPortalActions();
 }
 async function login() {
