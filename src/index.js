@@ -430,6 +430,9 @@ async function app(request, env) {
         { success: false, error: "Administrator access required" },
         403,
       );
+    if (url.pathname.startsWith("/v1/admin/point-rules") && !admin.adminAccess.canManagePoints) {
+      return json({ success: false, error: "Point management permission required" }, 403);
+    }
     if (request.method === "GET" && url.pathname === "/v1/admin/overview") {
       const [members, courses, campaigns, points, checkins] =
         await env.DB.batch([
