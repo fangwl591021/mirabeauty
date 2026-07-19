@@ -40,6 +40,15 @@ import {
   saveLineToken,
   testSavedLineToken,
 } from "./rich-menu.js";
+import {
+  deleteMediaAsset,
+  listMediaAssets,
+  removeTemplateMediaReferences,
+  serveMediaAsset,
+  syncTemplateMediaReferences,
+  uploadVideoAsset,
+  uploadVideoPoster,
+} from "./media-library.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -207,6 +216,10 @@ async function app(request, env) {
         "x-content-type-options": "nosniff",
       },
     });
+  }
+  const mediaMatch = url.pathname.match(/^\/v1\/media\/([^/]+)\/(video|poster)$/);
+  if (["GET", "HEAD"].includes(request.method) && mediaMatch) {
+    return serveMediaAsset(env.DB, env.MEDIA, request, decodeURIComponent(mediaMatch[1]), mediaMatch[2]);
   }
   const cardMedia = url.pathname.match(/^\/v1\/cards\/media\/([^/]+)$/);
   if (request.method === "GET" && cardMedia) {
@@ -442,6 +455,28 @@ async function app(request, env) {
     if (url.pathname.startsWith("/v1/admin/rich-menu") && !admin.adminAccess.canManageRichMenu) {
       return json({ success: false, error: "圖文選單管理權限不足" }, 403);
     }
+    if (request.method === "GET" && url.pathname === "/v1/admin/media-assets") {
+      try {
+        return json({ success: true, assets: await listMediaAssets(env.DB, env.MEDIA, url.origin) });
+      } catch (error) { return badRequest(error.message || "影片庫載入失敗"); }
+    }
+    if (request.method === "PUT" && url.pathname === "/v1/admin/media-assets/video") {
+      try {
+        return json({ success: true, asset: await uploadVideoAsset(env.DB, env.MEDIA, admin.userId, request, url.origin) }, 201);
+      } catch (error) { return badRequest(error.message || "影片上傳失敗"); }
+    }
+    const mediaPosterMatch = url.pathname.match(/^\/v1\/admin\/media-assets\/([^/]+)\/poster$/);
+    if (request.method === "PUT" && mediaPosterMatch) {
+      try {
+        return json({ success: true, asset: await uploadVideoPoster(env.DB, env.MEDIA, decodeURIComponent(mediaPosterMatch[1]), request, url.origin) });
+      } catch (error) { return badRequest(error.message || "影片封面上傳失敗"); }
+    }
+    const mediaDeleteMatch = url.pathname.match(/^\/v1\/admin\/media-assets\/([^/]+)$/);
+    if (request.method === "DELETE" && mediaDeleteMatch) {
+      try {
+        return json(await deleteMediaAsset(env.DB, env.MEDIA, decodeURIComponent(mediaDeleteMatch[1])));
+      } catch (error) { return badRequest(error.message || "影片刪除失敗"); }
+    }
     if (request.method === "GET" && url.pathname === "/v1/admin/rich-menu/token") {
       return json({ success: true, ...(await getLineTokenStatus(env.DB)) });
     }
@@ -675,6 +710,7 @@ async function app(request, env) {
         );
       }
       await env.DB.batch(statements);
+      await removeTemplateMediaReferences(env.DB, env.MEDIA, templateId);
       return json({ success: true, templates: remaining });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template") {
@@ -705,14 +741,36 @@ async function app(request, env) {
         entryUrl: String(template.entryUrl || "").slice(0, 4096),
         altText: String(template.altText || "今日簽到").slice(0, 300),
         rotationMode: template.rotationMode === "sequential" ? "sequential" : "random",
-        pages: pages.map((page) => ({
-          imageUrl: normalizeTemplateImageUrl(page.imageUrl).slice(0, 4096), imageLink: String(page.imageLink || "").slice(0, 4096),
+        pages: pages.map((page) => {
+          const mediaType = page.mediaType === 'video' ? 'video' : 'image';
+          const mediaAssetId = mediaType === 'video' ? String(page.mediaAssetId || '').trim().slice(0, 160) : '';
+          return {
+          id: String(page.id || newId('daily_page')).slice(0, 160), mediaType, mediaAssetId,
+          mediaName: mediaType === 'video' ? String(page.mediaName || '影片').slice(0, 180) : '',
+          imageUrl: mediaType === 'image' ? normalizeTemplateImageUrl(page.imageUrl).slice(0, 4096) : '',
+          videoUrl: mediaAssetId ? `${url.origin}/v1/media/${encodeURIComponent(mediaAssetId)}/video` : '',
+          posterUrl: mediaAssetId ? `${url.origin}/v1/media/${encodeURIComponent(mediaAssetId)}/poster` : '',
+          imageLink: String(page.imageLink || "").slice(0, 4096),
           bubbleSize: ["nano","micro","deca","hecto","kilo","mega","giga"].includes(page.bubbleSize) ? page.bubbleSize : "nano",
           imageAspectRatio: /^\d{1,4}:\d{1,4}$/.test(String(page.imageAspectRatio || "")) ? page.imageAspectRatio : "400:600",
           imageAspectMode: page.imageAspectMode === "fit" ? "fit" : "cover",
+          requiredWatchSeconds: Math.max(0, Math.min(3600, Math.round(Number(page.requiredWatchSeconds) || 3))),
+          requiredCompletionRatio: mediaType === 'video' ? Math.max(0, Math.min(1, Number(page.requiredCompletionRatio) || 0.8)) : 0,
           buttons: (Array.isArray(page.buttons) ? page.buttons : []).slice(0, 4).map((button) => ({ label: String(button.label || "").slice(0, 80), type: "uri", text: "", uri: String(button.uri || "").slice(0, 4096), color: /^#[0-9a-f]{6}$/i.test(String(button.color || "")) ? String(button.color) : "" })).filter((button) => button.label && button.uri),
-        })),
+        };}),
       };
+      if (safe.active && safe.pages.some(page => page.mediaType === 'image' && !page.imageUrl)) return badRequest('每一個圖片頁都必須上傳圖片');
+      if (safe.active) {
+        for (const page of safe.pages.filter(page => page.mediaType === 'video')) {
+          if (!page.mediaAssetId) return badRequest('每一個影片頁都必須從影片庫選擇影片');
+          const asset = await env.DB.prepare("SELECT id FROM media_assets WHERE id = ? AND status = 'ready'").bind(page.mediaAssetId).first();
+          if (!asset) return badRequest('選擇的影片不存在或已被刪除，請重新選擇');
+        }
+      } else {
+        safe.pages = safe.pages.map(page => page.mediaType === 'video'
+          ? { ...page, mediaAssetId: '', mediaName: '', videoUrl: '', posterUrl: '' }
+          : page);
+      }
       templates = [...templates.filter((item) => String(item.id) !== templateId), safe];
       const campaignStatus = safe.active ? "active" : "paused";
       const statements = [
@@ -722,13 +780,14 @@ async function app(request, env) {
         env.DB.prepare("INSERT INTO ad_campaigns (id, name, status, starts_at, ends_at, required_creative_count, rotation_mode) VALUES (?, ?, ?, '2020-01-01T00:00:00.000Z', '2099-12-31T23:59:59.000Z', ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status, starts_at = excluded.starts_at, ends_at = excluded.ends_at, required_creative_count = excluded.required_creative_count, rotation_mode = excluded.rotation_mode, updated_at = CURRENT_TIMESTAMP").bind(campaignId, safe.altText, campaignStatus, Math.max(1, safe.pages.length), safe.rotationMode),
       ];
       safe.pages.forEach((page, index) => {
-        statements.push(env.DB.prepare("INSERT INTO ad_creatives (id, campaign_id, creative_type, title, media_url, preview_url, target_url, image_link, buttons_json, bubble_size, image_aspect_ratio, image_aspect_mode, required_watch_seconds, required_completion_ratio, display_order, status) VALUES (?, ?, 'image', ?, ?, '', '', ?, ?, ?, ?, ?, 3, 0, ?, ?)").bind(newId("creative_daily_template"), campaignId, safe.altText, page.imageUrl, page.imageLink, JSON.stringify(page.buttons), page.bubbleSize, page.imageAspectRatio, page.imageAspectMode, index, safe.active ? "active" : "archived"));
+        statements.push(env.DB.prepare("INSERT INTO ad_creatives (id, campaign_id, creative_type, title, media_url, preview_url, target_url, image_link, buttons_json, bubble_size, image_aspect_ratio, image_aspect_mode, required_watch_seconds, required_completion_ratio, display_order, status) VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(newId("creative_daily_template"), campaignId, page.mediaType, safe.altText, page.mediaType === 'video' ? page.videoUrl : page.imageUrl, page.mediaType === 'video' ? page.posterUrl : '', page.imageLink, JSON.stringify(page.buttons), page.bubbleSize, page.imageAspectRatio, page.imageAspectMode, page.requiredWatchSeconds, page.requiredCompletionRatio, index, safe.active ? "active" : "archived"));
       });
       statements.push(
         env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_templates', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(templates)),
         env.DB.prepare("INSERT INTO app_meta (key, value, updated_at) VALUES ('checkin_reward_template', ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP").bind(JSON.stringify(safe)),
       );
       await env.DB.batch(statements);
+      await syncTemplateMediaReferences(env.DB, env.MEDIA, templateId, safe.pages, safe.active);
       return json({ success: true, template: safe, templates, campaignId });
     }
     if (request.method === "POST" && url.pathname === "/v1/admin/checkin-template/upload-image") {
@@ -1127,7 +1186,7 @@ async function app(request, env) {
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS")
-      return new Response(null, { headers: { allow: "GET, POST, OPTIONS" } });
+      return new Response(null, { headers: { allow: "GET, HEAD, POST, PUT, DELETE, OPTIONS" } });
     try {
       return await app(request, env);
     } catch (error) {
