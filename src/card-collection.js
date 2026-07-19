@@ -85,6 +85,9 @@ export async function recognizeImport(db, bucket, userId, eventId, apiKey, model
     return { eventId, card:cleanCard(result), confidence:Number(result.confidence || 0), language:text(result.language,40) };
   } catch (error) {
     await db.prepare("UPDATE card_import_events SET status=CASE WHEN status='rejected' THEN status ELSE 'failed' END, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId).run();
+    // 辨識失敗不保留無用途的原始照片；使用者重新拍攝即可，避免 R2 累積孤兒檔案。
+    await Promise.all([event.front_r2_key,event.back_r2_key].filter(Boolean).map((key)=>bucket.delete(key)));
+    await db.prepare("UPDATE card_import_events SET front_r2_key='', back_r2_key='' WHERE id=?").bind(eventId).run();
     throw error;
   }
 }
@@ -94,7 +97,11 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   if (!event || event.status !== 'review_ready') throw new Error('名片辨識結果已失效，請重新掃描');
   const card = cleanCard(payload.card || payload);
   const self = await db.prepare('SELECT pc.id FROM platform_users pu LEFT JOIN member_profiles mp ON mp.platform_user_id=pu.id LEFT JOIN personal_cards pc ON pc.platform_user_id=pu.id WHERE pu.id=? AND ((? != \'\' AND (REPLACE(COALESCE(mp.phone,\'\'),\' \',\'\')=? OR REPLACE(COALESCE(pc.mobile,\'\'),\' \',\'\')=?)) OR (? != \'\' AND LOWER(COALESCE(pc.email,\'\'))=?)) LIMIT 1').bind(userId,card.normalizedMobile,card.normalizedMobile,card.normalizedMobile,card.normalizedEmail,card.normalizedEmail).first();
-  if (self?.id) { const error=new Error('這是你自己的名片，請回「我的名片」編輯'); error.code='self_card'; throw error; }
+  if (self?.id) {
+    await Promise.all([event.front_r2_key,event.back_r2_key].filter(Boolean).map((key)=>bucket.delete(key)));
+    await db.prepare("UPDATE card_import_events SET status='rejected',front_r2_key='',back_r2_key='',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId).run();
+    const error=new Error('這是你自己的名片，請回「我的名片」編輯'); error.code='self_card'; throw error;
+  }
   const duplicate = await findDuplicate(db,userId,card);
   if (duplicate && payload.duplicateAction !== 'update') { const error=new Error('收藏名單已有相同名片'); error.code='duplicate_contact'; error.duplicate=rowToCard(duplicate); throw error; }
   const id = duplicate?.id || newId('contact');
