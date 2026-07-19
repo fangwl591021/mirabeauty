@@ -3,9 +3,10 @@ import { newId } from './member-repository.js';
 const CARD_COLUMNS = `
   id, platform_user_id, display_name, english_name, company_name, job_title, department,
   mobile, company_phone, email, website_url, line_url, address, service_description,
-  cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
+  chat_alt_text, cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
 `;
 const DEFAULT_CARD_COVER_URL = '/card-default-cover.jpg';
+const DEFAULT_CHAT_ALT_TEXT = '美妝新世代、從米拉開始';
 const FIXED_STORE_ADDRESS = '台中市烏日區高鐵一路268號7樓之11';
 const FIXED_STORE_MAP_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(FIXED_STORE_ADDRESS)}`;
 const DEFAULT_SERVICE_DESCRIPTION = `源自對美的熱愛創立了米拉
@@ -147,6 +148,7 @@ function cardFromRow(row, publicView = false) {
     lineUrl: row.line_url,
     address: row.address,
     serviceDescription: row.service_description || DEFAULT_SERVICE_DESCRIPTION,
+    chatAltText: row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT,
     serviceTextAlign: normaliseTextAlign(selected.serviceTextAlign),
     descriptionTextAlign: normaliseTextAlign(selected.descriptionTextAlign),
     coverUrl: selected.coverUrl,
@@ -181,6 +183,7 @@ export async function saveMyCard(db, userId, payload, member) {
     lineUrl: normaliseUrl(payload.lineUrl, 'LINE 連結'),
     address: text(payload.address, 300),
     serviceDescription: text(payload.serviceDescription || existing?.serviceDescription || DEFAULT_SERVICE_DESCRIPTION, 1600),
+    chatAltText: text(payload.chatAltText || existing?.chatAltText || DEFAULT_CHAT_ALT_TEXT, 300),
     serviceTextAlign: normaliseTextAlign(payload.serviceTextAlign || existing?.serviceTextAlign),
     selectedVersion: CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing?.selectedVersion || 'standard'),
     versions: normaliseVersions(payload.versions, existing ? { versions_json: JSON.stringify(existing.versions || {}), cover_url: existing.coverUrl, buttons_json: JSON.stringify(existing.buttons || []) } : {}),
@@ -198,19 +201,19 @@ export async function saveMyCard(db, userId, payload, member) {
     INSERT INTO personal_cards (
       id, platform_user_id, display_name, english_name, company_name, job_title, department,
       mobile, company_phone, email, website_url, line_url, address, service_description,
-      cover_url, buttons_json, selected_version, versions_json, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      chat_alt_text, cover_url, buttons_json, selected_version, versions_json, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(platform_user_id) DO UPDATE SET
       display_name = excluded.display_name, english_name = excluded.english_name,
       company_name = excluded.company_name, job_title = excluded.job_title, department = excluded.department,
       mobile = excluded.mobile, company_phone = excluded.company_phone, email = excluded.email,
       website_url = excluded.website_url, line_url = excluded.line_url, address = excluded.address,
-      service_description = excluded.service_description, cover_url = excluded.cover_url,
+      service_description = excluded.service_description, chat_alt_text = excluded.chat_alt_text, cover_url = excluded.cover_url,
       buttons_json = excluded.buttons_json, selected_version = excluded.selected_version,
       versions_json = excluded.versions_json, status = excluded.status, updated_at = CURRENT_TIMESTAMP
   `).bind(id, userId, values.displayName, values.englishName, values.companyName, values.jobTitle, values.department,
     values.mobile, values.companyPhone, values.email, values.websiteUrl, values.lineUrl, values.address,
-    values.serviceDescription, selected.coverUrl, JSON.stringify(selected.buttons), values.selectedVersion,
+    values.serviceDescription, values.chatAltText, selected.coverUrl, JSON.stringify(selected.buttons), values.selectedVersion,
     JSON.stringify(values.versions), values.status).run();
   return getMyCard(db, userId);
 }
