@@ -19,6 +19,29 @@ const showStatus = (message, type = "ok") => {
   box.className = `status ${type}`;
   setTimeout(() => (box.className = "status hidden"), 5000);
 };
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function withButtonFeedback(button, task, { busy = "處理中…", success = "已完成" } = {}) {
+  if (!button) return task();
+  if (button.dataset.busy === "1") return;
+  const original = button.textContent;
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.textContent = busy;
+  try {
+    const result = await task();
+    if (button.isConnected) {
+      button.textContent = success;
+      await wait(650);
+    }
+    return result;
+  } finally {
+    if (button.isConnected) {
+      button.disabled = false;
+      button.textContent = original;
+      delete button.dataset.busy;
+    }
+  }
+}
 const format = (value) =>
   new Intl.NumberFormat("zh-TW").format(Number(value) || 0);
 async function loadAdminIdentity() {
@@ -119,10 +142,15 @@ async function openMemberDetail(id) {
 const localIso = (value) => (value ? new Date(value).toISOString() : "");
 async function submitForm(event, endpoint, body) {
   event.preventDefault();
+  const form = event.target;
+  const button = event.submitter || form.querySelector('[type="submit"]');
   try {
-    const result = await api(endpoint, body());
-    event.target.reset();
-    showStatus(`建立完成，ID：${result.id}`);
+    await withButtonFeedback(button, async () => {
+      const result = await api(endpoint, body());
+      form.reset();
+      showStatus(`建立完成，ID：${result.id}`);
+      return result;
+    }, { busy: "建立中…", success: "已建立" });
   } catch (error) {
     showStatus(error.message, "error");
   }
@@ -137,10 +165,15 @@ document
   .forEach((button) =>
     button.addEventListener("click", () => switchPage(button.dataset.go)),
   );
-$("#refresh").addEventListener("click", () =>
-  overview().then((ok) => ok && showStatus("資料已重新同步")),
+$("#refresh").addEventListener("click", (event) =>
+  withButtonFeedback(event.currentTarget, async () => {
+    const ok = await overview();
+    if (ok) showStatus("資料已重新同步");
+  }, { busy:"同步中…", success:"已同步" }),
 );
-$("#refreshMembers").addEventListener("click", loadMembers);
+$("#refreshMembers").addEventListener("click", (event) =>
+  withButtonFeedback(event.currentTarget, loadMembers, { busy:"整理中…", success:"已更新" }),
+);
 $("#memberSearch").addEventListener("input", renderMembers);
 $("#logout").addEventListener("click", () => {
   localStorage.removeItem("mirabeauty_session");
@@ -174,20 +207,25 @@ $("#ruleList").addEventListener("submit", async (event) => {
   const form = event.target.closest(".rule-row");
   if (!form) return;
   event.preventDefault();
+  const button = event.submitter || form.querySelector('[type="submit"]');
   try {
-    await api(`/v1/admin/point-rules/${form.dataset.ruleId}`, {
-      eventType: form.querySelector(".rule-event").dataset.eventType,
-      points: Number(form.querySelector('[data-rule-field="points"]').value),
-      awardFrequency: form.querySelector('[data-rule-field="frequency"]').value,
-      status: form.querySelector('[data-rule-field="status"]').value,
-    });
-    showStatus("點數規則已儲存");
-    loadPointRules();
+    await withButtonFeedback(button, async () => {
+      await api(`/v1/admin/point-rules/${form.dataset.ruleId}`, {
+        eventType: form.querySelector(".rule-event").dataset.eventType,
+        points: Number(form.querySelector('[data-rule-field="points"]').value),
+        awardFrequency: form.querySelector('[data-rule-field="frequency"]').value,
+        status: form.querySelector('[data-rule-field="status"]').value,
+      });
+      showStatus("點數規則已儲存");
+    }, { busy: "儲存中…", success: "已儲存" });
+    await loadPointRules();
   } catch (error) {
     showStatus(error.message, "error");
   }
 });
-$("#refreshRules").addEventListener("click", loadPointRules);
+$("#refreshRules").addEventListener("click", (event) =>
+  withButtonFeedback(event.currentTarget, loadPointRules, { busy:"整理中…", success:"已更新" }),
+);
 $("#reconcilePoints").addEventListener("click", async () => {
   const button = $("#reconcilePoints");
   if (!confirm("將依目前啟用規則補發尚未入帳的既有完成條件；已入帳資料不會重複發點。是否繼續？")) return;
@@ -318,11 +356,14 @@ async function saveCalendarEvent() {
   if (payload.mode === "online" && !payload.meetingUrl) {
     return calendarStatus("線上活動請填寫線上會議網址。", true);
   }
+  const button = $("#calendarSave");
   try {
-    const result = await api('/v1/admin/calendar/events', payload);
-    calendarStatus("已儲存。未選擇既有課程時，系統已自動建立同名活動並連動報名、簽到與點數。");
-    await loadCalendar();
-    openCalendarEditor(result.id);
+    await withButtonFeedback(button, async () => {
+      const result = await api('/v1/admin/calendar/events', payload);
+      calendarStatus("已儲存。未選擇既有課程時，系統已自動建立同名活動並連動報名、簽到與點數。");
+      await loadCalendar();
+      openCalendarEditor(result.id);
+    }, { busy:"儲存中…", success:"已儲存" });
   } catch(error) {
     const message = {
       calendar_title_required: "請填寫活動名稱。",
@@ -358,7 +399,7 @@ async function uploadCalendarCover(input) {
     status.textContent = `上傳失敗：${error.message || "請改用 JPG、PNG 或 WebP 圖片"}`;
   }
 }
-async function deleteCalendarEvent() { const id = $("#calendarEventId").value; if (!id || !confirm('確定取消此場次？既有報名與簽到紀錄會保留。')) return; try { await api(`/v1/admin/calendar/events/${encodeURIComponent(id)}`, null, 'DELETE'); clearCalendarEditor(); await loadCalendar(); showStatus('場次已取消'); } catch(error) { calendarStatus(error.message, true); } }
+async function deleteCalendarEvent() { const id = $("#calendarEventId").value; if (!id || !confirm('確定取消此場次？既有報名與簽到紀錄會保留。')) return; const button=$("#calendarDelete"); try { await withButtonFeedback(button, async()=>{ await api(`/v1/admin/calendar/events/${encodeURIComponent(id)}`, null, 'DELETE'); clearCalendarEditor(); await loadCalendar(); showStatus('場次已取消'); }, {busy:'取消中…',success:'已取消'}); } catch(error) { calendarStatus(error.message, true); } }
 $("#calendarNew")?.addEventListener('click', copyCalendarEvent); $("#calendarRefresh")?.addEventListener('click', loadCalendar); $("#calendarCoverImage")?.addEventListener('change', (event) => uploadCalendarCover(event.target)); $("#calendarPrev")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()-1, 1); renderCalendarMonth(); }); $("#calendarNext")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()+1, 1); renderCalendarMonth(); }); $("#calendarClose")?.addEventListener('click', clearCalendarEditor); $("#calendarSave")?.addEventListener('click', saveCalendarEvent); $("#calendarDelete")?.addEventListener('click', deleteCalendarEvent);
 const templateButtons = (value) =>
   String(value || "")
@@ -520,15 +561,16 @@ checkinBackdrop?.addEventListener("click",closeCheckinEditor);
 $("#templateDirectorySearch")?.addEventListener("input",event=>{templateDirectoryQuery=event.target.value||"";templateDirectoryPage=1;renderTemplateDirectory()});
 $("#templateDirectoryPrev")?.addEventListener("click",()=>{templateDirectoryPage=Math.max(1,templateDirectoryPage-1);renderTemplateDirectory()});
 $("#templateDirectoryNext")?.addEventListener("click",()=>{templateDirectoryPage+=1;renderTemplateDirectory()});
-$("#templateGroupDirectory").addEventListener("click",event=>{
-  const action=event.target.closest("[data-template-directory-action]")?.dataset.templateDirectoryAction;
+$("#templateGroupDirectory").addEventListener("click",async event=>{
+  const actionButton=event.target.closest("[data-template-directory-action]");
+  const action=actionButton?.dataset.templateDirectoryAction;
   if(!action)return;
   const row=event.target.closest("[data-template-id]"),id=row?.dataset.templateId;
   const template=checkinTemplates.find(item=>item.id===id);
   if(!template)return;
   if(action==="edit"){openCheckinEditor(template);return;}
-  if(action==="rename")return renameCheckinGroup(id,row.querySelector("input")?.value);
-  if(action==="delete")return deleteCheckinGroup(id);
+  if(action==="rename")return withButtonFeedback(actionButton,()=>renameCheckinGroup(id,row.querySelector("input")?.value),{busy:"儲存中…",success:"已儲存"});
+  if(action==="delete")return withButtonFeedback(actionButton,()=>deleteCheckinGroup(id),{busy:"刪除中…",success:"已刪除"});
 });
 $("#templateGroupSelect")?.addEventListener("change",(event)=>{const next=checkinTemplates.find(item=>item.id===event.target.value);if(next)renderCheckinTemplate(next)});$("#templateNewGroup").addEventListener("click",()=>{const t=defaultTemplate();t.id=`draft_${Date.now()}`;t.altText=`簽到活動 ${checkinTemplates.length+1}`;checkinTemplates=[...checkinTemplates,t];openCheckinEditor(t);templateStatus("已建立新的簽到活動，請輸入標籤名稱並設定素材後儲存。",true)});$("#templateAddPage").addEventListener("click",()=>{const t=collectTemplate(),collapsed=collapsedTemplatePages();t.pages.push(defaultPage());renderCheckinTemplate(t,collapsed);templateStatus(`已新增第 ${t.pages.length} 頁，請上傳圖片。`,true)});$("#templateSave").addEventListener("click",saveCheckinTemplate);$("#templatePages").addEventListener("input",refreshTemplatePreview);$("#templatePages").addEventListener("change",async e=>{if(e.target.matches('[data-field="colorPicker"]'))e.target.closest(".templateColorRow").querySelector('[data-field="color"]').value=e.target.value.toUpperCase();if(e.target.matches('[data-field="imageFile"]'))await uploadTemplateImage(e.target);refreshTemplatePreview()});$("#templatePages").addEventListener("click",e=>{const button=e.target.closest("[data-template-action]");if(!button)return;const t=collectTemplate(),page=button.closest(".templatePage"),i=Number(page?.dataset.pageIndex),collapsed=collapsedTemplatePages();if(button.dataset.templateAction==="add-button")t.pages[i].buttons.push(defaultButton());if(button.dataset.templateAction==="remove-page"&&i>0){t.pages.splice(i,1);renderCheckinTemplate(t,collapsed.filter(x=>x!==i).map(x=>x>i?x-1:x));return}if(button.dataset.templateAction==="remove-button"){const j=Number(button.closest(".templateButton")?.dataset.buttonIndex);if(j>=0)t.pages[i].buttons.splice(j,1)}renderCheckinTemplate(t,collapsed)});["#templateEntryUrl","#templateAltText","#templateRotationMode","#templateActive"].forEach(id=>$(id).addEventListener("input",refreshTemplatePreview));
-$("#copyTemplateEntry").addEventListener("click", async () => { await navigator.clipboard.writeText(dailyEntryUrl()); templateStatus("活動入口網址已複製。", true); });
+$("#copyTemplateEntry").addEventListener("click", (event) => withButtonFeedback(event.currentTarget, async () => { await navigator.clipboard.writeText(dailyEntryUrl()); templateStatus("活動入口網址已複製。", true); }, {busy:"複製中…",success:"已複製"}));
