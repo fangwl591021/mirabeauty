@@ -72,11 +72,10 @@ export async function listAdminCourses(db) {
 
 export async function saveCalendarSession(db, body) {
   // Keep the MLM calendar contract: an activity is independently saveable.
-  // Linking it to an existing course remains optional; when no course is selected
-  // we create a published activity-course with the same title so the member
-  // catalogue, registration, attendance and point records still share one source.
+  // Every calendar event owns an internal published course record. The internal
+  // record keeps registration, attendance and points on one source without
+  // exposing a confusing course-link selector in the calendar editor.
   const title = String(body.title || '').trim();
-  let courseId = String(body.courseId || '').trim();
   const mode = String(body.mode || '').trim();
   const startsAt = String(body.startsAt || '').trim();
   const endsAt = String(body.endsAt || '').trim();
@@ -92,15 +91,15 @@ export async function saveCalendarSession(db, body) {
   }
 
   const id = String(body.id || '').trim() || newId('session');
-  if (!courseId) {
-    courseId = `calendar_course_${id}`;
-    await db.prepare(`
+  const courseId = `calendar_course_${id}`;
+  await db.batch([
+    db.prepare(`
       INSERT OR IGNORE INTO courses (id, title, description, cover_url, status, created_by_user_id)
       VALUES (?, ?, ?, '', 'published', NULL)
-    `).bind(courseId, title, '由行事曆活動自動建立').run();
-  }
-  const course = await db.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
-  if (!course) return { ok: false, reason: 'course_not_found' };
+    `).bind(courseId, title, '由行事曆活動自動建立'),
+    db.prepare(`UPDATE courses SET title = ?, cover_url = ?, status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .bind(title, coverUrl, courseId),
+  ]);
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
   if (existing) {
