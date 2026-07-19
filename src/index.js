@@ -362,9 +362,23 @@ async function app(request, env) {
   if (request.method === "GET" && url.pathname === "/v1/points/wallet") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    const [wallet, referralResult] = await Promise.all([
+      getWallet(env.DB, member.userId),
+      env.DB.prepare(
+        `SELECT mp.display_name, mp.member_number, rr.created_at
+         FROM referral_relationships rr
+         LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id
+         WHERE rr.referrer_user_id = ? AND rr.status = 'active'
+         ORDER BY rr.created_at DESC
+         LIMIT 100`,
+      )
+        .bind(member.userId)
+        .all(),
+    ]);
     return json({
       success: true,
-      wallet: await getWallet(env.DB, member.userId),
+      wallet,
+      referrals: referralResult.results || [],
     });
   }
 
@@ -978,7 +992,7 @@ async function app(request, env) {
       const token = body.token || randomInviteToken();
       try {
         const invite = await createInviteLink(env.DB, member.userId, token);
-      // 必須用 LIFF URL 開啟，才能使用 requestFriendship() 的原生加好友視窗。
+      // 邀約入口使用 LIFF URL，讓受邀者可直接完成 LINE Login 並帶回推薦 token。
       const shareUrl = env.LIFF_ID
         ? `https://liff.line.me/${env.LIFF_ID}?invite=${encodeURIComponent(invite.token)}`
         : `${url.origin}/i/${invite.token}`;
