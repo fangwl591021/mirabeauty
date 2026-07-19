@@ -542,3 +542,14 @@ body.template-drawer-open{overflow:hidden}
 .rich-menu-editor-panel{height:calc(100vh - 295px);min-height:680px;overflow:hidden;border:1px solid #dfe6ef;border-radius:14px;background:#fff;box-shadow:0 8px 30px rgba(36,52,78,.06)}
 .rich-menu-editor-panel iframe{display:block;width:100%;height:100%;border:0;background:#fff}
 @media(max-width:850px){.rich-menu-page{padding:10px}.rich-menu-token-row{grid-template-columns:1fr 1fr}.rich-menu-token-row label{grid-column:1/-1}.rich-menu-editor-panel{height:760px;min-height:0}}
+
+/* 課程／活動合併入口：清單與行事曆共用同一模組。 */
+.course-module-tabs{display:flex;gap:4px;width:max-content;margin:0 0 14px;padding:4px;border:1px solid #dce5ef;border-radius:11px;background:#eef3f8}
+.course-module-tabs button{min-width:112px;height:38px;border:0;border-radius:8px;background:transparent;color:#60738d;font:800 14px inherit;cursor:pointer}
+.course-module-tabs button.active{background:#fff;color:#079b45;box-shadow:0 2px 8px rgba(37,55,82,.1)}
+.course-list{display:grid;gap:9px}
+.course-list article{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px;border:1px solid #e3e9f1;border-radius:11px;background:#fbfdff}
+.course-list strong{display:block;color:#193457}
+.course-list p{margin:5px 0 0;color:#718096;font-size:13px}
+.course-list span{border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;white-space:nowrap}
+.course-list .published{background:#e8f8ef;color:#087c3d}.course-list .draft{background:#fff4e5;color:#9a6412}
