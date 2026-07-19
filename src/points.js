@@ -98,8 +98,10 @@ export async function awardPoints(db, { userId, eventType, eventReference, idemp
 
 export async function adjustPoints(db, { userId, actorUserId, action, points, note = '', requestId }) {
   const amount = Number(points);
+  const reason = String(note || '').trim().slice(0, 500);
   if (!['grant', 'deduct', 'backfill'].includes(action)) throw new Error('Invalid point adjustment action');
   if (!Number.isInteger(amount) || amount <= 0 || amount > 1000000) throw new Error('Points must be an integer between 1 and 1000000');
+  if (!reason) throw new Error('Adjustment reason is required');
   const safeRequestId = String(requestId || '').trim().slice(0, 120);
   if (!safeRequestId) throw new Error('requestId is required');
   const idempotencyKey = `admin_points:${safeRequestId}`;
@@ -120,7 +122,7 @@ export async function adjustPoints(db, { userId, actorUserId, action, points, no
   if (balanceAfter < 0) throw new Error('Insufficient point balance');
   const eventType = action === 'deduct' ? 'admin_points_deduct' : action === 'backfill' ? 'admin_points_backfill' : 'admin_points_grant';
   const entry = { id: newId('ledger'), delta, balanceAfter };
-  const metadata = JSON.stringify({ actorUserId, action, note: String(note || '').trim().slice(0, 500) });
+  const metadata = JSON.stringify({ actorUserId, action, note: reason });
   await db.batch([
     db.prepare('UPDATE point_accounts SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(balanceAfter, account.id),
     db.prepare(`INSERT INTO point_ledger_entries
