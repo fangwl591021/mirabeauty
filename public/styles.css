@@ -61,3 +61,20 @@
 .line-source-editor-primary{background:#b96072;color:#fff}
 .line-source-editor-danger{border:1px solid #efc2ce;background:#fff7f8;color:#c1516a}
 @media(max-width:679px){.line-source-ecard-canvas .line-source-ecard-top{align-items:flex-start}.line-source-ecard-top>div{flex-wrap:wrap;justify-content:flex-end}.line-source-ecard-top .line-source-save{min-height:34px;padding:0 10px;font-size:12px!important}.line-source-preview-body [data-ecard-edit="title"]{font-size:19px}.line-source-editor-modal{align-items:flex-end;padding:0}.line-source-editor-sheet{width:100%;max-height:84vh;border-radius:18px 18px 0 0}}
+
+/* 錢包：點數紀錄與分享成果預設收合，避免長清單佔滿畫面。 */
+.wallet-disclosure{padding:0;overflow:hidden}
+.wallet-disclosure summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 16px;color:#172b4d;font-size:18px;font-weight:800;cursor:pointer;list-style:none;-webkit-tap-highlight-color:transparent}
+.wallet-disclosure summary::-webkit-details-marker{display:none}
+.wallet-summary-meta{display:flex;align-items:center;gap:9px;flex:0 0 auto;color:#8b6472;font-size:12px;font-weight:750}
+.wallet-summary-meta i{width:9px;height:9px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg) translateY(-2px);transition:transform .18s ease}
+.wallet-disclosure[open] .wallet-summary-meta i{transform:rotate(225deg) translate(-2px,-2px)}
+.wallet-disclosure[open] summary{border-bottom:1px solid #eef1f5}
+.wallet-list{padding:0 16px 6px}
+.wallet-entry,.wallet-referral{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.wallet-entry>div,.wallet-referral>div{display:grid;gap:4px;min-width:0}
+.wallet-entry b,.wallet-referral b{color:#172b4d}
+.wallet-delta{flex:0 0 auto;color:#079b56;font-size:17px}
+.wallet-delta.negative{color:#c1516a}
+.wallet-referral>span{flex:0 0 auto;text-align:right}
+.wallet-empty{margin:0;padding:18px 0}
