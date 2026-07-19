@@ -137,6 +137,29 @@ const api = async (path, options = {}) => {
   if (!r.ok) throw new Error(j.error || "操作失敗");
   return j;
 };
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function withActionFeedback(button, task, { busy = "處理中…", success = "已完成" } = {}) {
+  if (!button) return task();
+  if (button.dataset.busy === "1") return;
+  const original = button.textContent;
+  button.dataset.busy = "1";
+  button.disabled = true;
+  button.textContent = busy;
+  try {
+    const result = await task();
+    if (button.isConnected) {
+      button.textContent = success;
+      await wait(650);
+    }
+    return result;
+  } finally {
+    if (button.isConnected) {
+      button.disabled = false;
+      button.textContent = original;
+      delete button.dataset.busy;
+    }
+  }
+}
 const esc = (s) =>
   String(s || "").replace(
     /[&<>"']/g,
@@ -397,10 +420,10 @@ async function courses() {
     (x) =>
       (x.onclick = async () => {
         try {
-          await api(`/v1/course-sessions/${x.dataset.register}/register`, {
-            method: "POST",
-            body: "{}",
-          });
+          await withActionFeedback(x, () => api(`/v1/course-sessions/${x.dataset.register}/register`, {
+              method: "POST",
+              body: "{}",
+            }), { busy:"報名中…", success:"已報名" });
           alert("報名成功");
           courses();
         } catch (e) {
@@ -492,8 +515,9 @@ async function daily() {
     }, 4000);
   }
   $("#checkin").onclick = async () => {
+    const button = $("#checkin");
     try {
-      const x = await api("/v1/daily-ad/check-in", { method: "POST", body: JSON.stringify({ campaignId: r.campaign.id }) });
+      const x = await withActionFeedback(button, () => api("/v1/daily-ad/check-in", { method: "POST", body: JSON.stringify({ campaignId: r.campaign.id }) }), {busy:"簽到處理中…",success:"簽到完成"});
       const pointText = x.pointResult?.awarded ? "，點數已入帳" : x.pointResult?.duplicate ? "，點數已確認入帳" : x.pointResult?.reason === "no_active_rule" ? "，但後台尚未啟用「每日簽到」點數規則" : "";
       alert(x.duplicate ? `今天已簽到${pointText}` : `簽到成功${pointText || "，點數已依規則處理"}`);
       daily();
@@ -927,7 +951,7 @@ async function card() {
   const myCard = result.card;
   if (!myCard) {
     layout(`<section class="card card-empty"><h2>建立我的名片</h2><p class="muted">建立後會以你的 LINE 名稱、頭貼與已填會員資料為起點；名片只會綁定目前的 LINE 帳號。</p><button class="btn" id="createMyCard">使用 LINE 資料建立名片</button></section>`);
-    $("#createMyCard").onclick = async () => { try { await api("/v1/cards/me", { method:"PUT", body:"{}" }); state.cardView = "contact"; await card(); } catch (error) { alert(error.message); } };
+    $("#createMyCard").onclick = async () => { const button=$("#createMyCard"); try { await withActionFeedback(button,()=>api("/v1/cards/me", { method:"PUT", body:"{}" }),{busy:"建立中…",success:"已建立"}); state.cardView = "contact"; await card(); } catch (error) { alert(error.message); } };
     return;
   }
   const view = state.cardView || "contact";
@@ -946,14 +970,14 @@ async function card() {
   bindPortalActions();
   if (view === "edit") {
     bindCardButtonEditor();
-    $("#cardForm").onsubmit = async (event) => { event.preventDefault(); try {
-      const updated = await api("/v1/cards/me", { method:"PUT", body:JSON.stringify({
+    $("#cardForm").onsubmit = async (event) => { event.preventDefault(); const button=event.submitter||event.target.querySelector('[type="submit"]'); try {
+      const updated = await withActionFeedback(button,()=>api("/v1/cards/me", { method:"PUT", body:JSON.stringify({
         displayName: $("#cardDisplayName").value, englishName: $("#cardEnglishName").value, companyName: $("#cardCompanyName").value,
         jobTitle: $("#cardJobTitle").value, department: $("#cardDepartment").value, mobile: $("#cardMobile").value,
         companyPhone: $("#cardCompanyPhone").value, email: $("#cardEmail").value, websiteUrl: $("#cardWebsiteUrl").value,
         lineUrl: $("#cardLineUrl").value, address: $("#cardAddress").value, serviceDescription: $("#cardServiceDescription").value, serviceTextAlign: $("#cardServiceTextAlign").value,
         coverUrl: $("#cardCoverUrl").value, buttons: collectCardButtons(), versions:myCard.versions, selectedVersion:myCard.selectedVersion, status:"published"
-      }) });
+      }) }),{busy:"儲存中…",success:"已儲存"});
       state.cardView = "contact"; alert("名片已儲存"); await card();
     } catch (error) { alert(error.message); } };
   }
@@ -996,9 +1020,10 @@ async function profile(required = false) {
     `<div class="card profile-card">${avatar()}<h2>${required ? "完成會員註冊" : "會員資料"}</h2><p class="muted">LINE 頭貼與名稱已自動帶入。請填寫直銷公司的會員編號；系統會員編號與系統推薦人不可自行修改。</p><label>姓名</label><input id="name" value="${esc(state.member.displayName)}" required><label>性別</label><select id="gender"><option value="">請選擇</option><option value="female" ${state.member.gender === "female" ? "selected" : ""}>女性</option><option value="male" ${state.member.gender === "male" ? "selected" : ""}>男性</option><option value="other" ${state.member.gender === "other" ? "selected" : ""}>其他</option><option value="prefer_not_to_say" ${state.member.gender === "prefer_not_to_say" ? "selected" : ""}>不透露</option></select><label>公司會員編號</label><input id="companyMemberNumber" value="${esc(state.member.companyMemberNumber)}" placeholder="請輸入直銷公司會員編號" required><label>系統會員編號</label><input value="${esc(state.member.memberNumber)}" readonly><label>系統推薦人</label><input value="${esc(refText)}" readonly><label>手機（選填）</label><input id="phone" value="${esc(state.member.phone)}"><button class="btn" id="save">${required ? "完成註冊" : "儲存"}</button>${required ? "" : `<button class="btn alt" id="logout">登出</button>`}</div>`,
   );
   $("#save").onclick = async () => {
+    const button = $("#save");
     try {
       state.member = (
-        await api("/v1/me", {
+        await withActionFeedback(button, () => api("/v1/me", {
           method: "PATCH",
           body: JSON.stringify({
             displayName: $("#name").value,
@@ -1006,7 +1031,7 @@ async function profile(required = false) {
             gender: $("#gender").value,
             companyMemberNumber: $("#companyMemberNumber").value,
           }),
-        })
+        }), { busy: required ? "註冊處理中…" : "儲存中…", success: required ? "註冊完成" : "已儲存" })
       ).member;
       alert(required ? "註冊完成" : "已儲存");
       state.tab = state.courseSession ? "courses" : "home";
