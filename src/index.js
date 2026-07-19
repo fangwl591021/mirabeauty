@@ -49,6 +49,16 @@ import {
   uploadVideoAsset,
   uploadVideoPoster,
 } from "./media-library.js";
+import {
+  collectPublicCard,
+  confirmImport,
+  createImport,
+  deleteContact,
+  listContacts,
+  recognizeImport,
+  serveContactImage,
+  updateContact,
+} from "./card-collection.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -229,6 +239,12 @@ async function app(request, env) {
     const imageBytes = row.bytes instanceof Uint8Array ? row.bytes : new Uint8Array(row.bytes);
     return new Response(imageBytes, { headers: { "content-type": row.content_type || "application/octet-stream", "content-length": String(imageBytes.byteLength), "cache-control": "public, max-age=31536000, immutable" } });
   }
+  const contactImage = url.pathname.match(/^\/v1\/card-collection\/([^/]+)\/image$/);
+  if (["GET", "HEAD"].includes(request.method) && contactImage) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    return serveContactImage(env.DB, env.MEDIA, request, member.userId, decodeURIComponent(contactImage[1]));
+  }
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
       success: true,
@@ -350,6 +366,68 @@ async function app(request, env) {
   if (request.method === "GET" && publicCardMatch) {
     const card = await getPublicCard(env.DB, decodeURIComponent(publicCardMatch[1]));
     return card ? json({ success: true, card }) : json({ success: false, error: "名片不存在或尚未公開" }, 404);
+  }
+
+  const collectCardMatch = url.pathname.match(/^\/v1\/cards\/([^/]+)\/collect$/);
+  if (request.method === "POST" && collectCardMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "請先登入後再收藏名片" }, 401);
+    try {
+      const result = await collectPublicCard(env.DB, member.userId, decodeURIComponent(collectCardMatch[1]));
+      return json({ success: true, ...result }, result.duplicate ? 200 : 201);
+    } catch (error) {
+      return json({ success: false, error: error.message, code: error.code || "collect_failed" }, error.code === "self_card" ? 409 : 400);
+    }
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/card-collection") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    return json({ success: true, cards: await listContacts(env.DB, member.userId, url.searchParams.get("search") || "") });
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/card-collection/imports") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, import: await createImport(env.DB, env.MEDIA, member.userId, await request.formData()) }, 201);
+    } catch (error) { return badRequest(error.message || "名片圖片上傳失敗"); }
+  }
+
+  const recognizeCardImport = url.pathname.match(/^\/v1\/card-collection\/imports\/([^/]+)\/recognize$/);
+  if (request.method === "POST" && recognizeCardImport) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const result = await recognizeImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(recognizeCardImport[1]), env.OPENAI_API_KEY, env.OPENAI_CARD_MODEL);
+      return json({ success: true, ...result });
+    } catch (error) { return badRequest(error.message || "名片辨識失敗"); }
+  }
+
+  const confirmCardImport = url.pathname.match(/^\/v1\/card-collection\/imports\/([^/]+)\/confirm$/);
+  if (request.method === "POST" && confirmCardImport) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const result = await confirmImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(confirmCardImport[1]), (await readJson(request)) || {});
+      return json({ success: true, ...result }, result.updated ? 200 : 201);
+    } catch (error) {
+      return json({ success: false, error: error.message || "名片儲存失敗", code: error.code || "save_failed", duplicate: error.duplicate || null }, error.code ? 409 : 400);
+    }
+  }
+
+  const contactCardMatch = url.pathname.match(/^\/v1\/card-collection\/([^/]+)$/);
+  if (request.method === "PATCH" && contactCardMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { return json({ success: true, card: await updateContact(env.DB, member.userId, decodeURIComponent(contactCardMatch[1]), (await readJson(request)) || {}) }); }
+    catch (error) { return badRequest(error.message || "收藏名片更新失敗"); }
+  }
+  if (request.method === "DELETE" && contactCardMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { await deleteContact(env.DB, env.MEDIA, member.userId, decodeURIComponent(contactCardMatch[1])); return json({ success: true }); }
+    catch (error) { return badRequest(error.message || "收藏名片刪除失敗"); }
   }
 
   if (request.method === "PATCH" && url.pathname === "/v1/me") {
