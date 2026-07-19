@@ -252,7 +252,9 @@
         <section class="page" data-content="carousel">
           <div class="template-section-head"><h3>簽到贈點活動模板</h3><div><span>所見即所得 LINE Flex 多頁活動卡</span><button class="template-back" data-go="dashboard">返回主控台</button></div></div>
           <article class="templateDesigner">
-            <div class="templateDesignerGrid">
+            <div id="templateDrawerBackdrop" class="templateDrawerBackdrop"></div>
+            <div id="templateEditorDrawer" class="templateDesignerGrid" role="dialog" aria-modal="true" aria-label="簽到活動編輯器">
+              <div class="templateDrawerHead"><strong id="templateDrawerTitle">編輯簽到活動</strong><button id="templateDrawerClose" type="button" aria-label="關閉編輯器">×</button></div>
               <div class="templateControls">
                 <div class="templateBlock templateTriggerBlock">
                   <div class="templateBlockHead"><strong>活動入口</strong><span>系統自動產生，提供分享或 QR 碼使用</span></div>
