@@ -30,3 +30,34 @@
 .daily-top-tab.active{background:#b96078;border-color:#b96078;color:#fff;box-shadow:0 3px 8px rgba(185,96,120,.16)}
 .daily-announcement{min-height:160px;padding:24px}
 .daily-announcement h2{margin:0 0 8px;font-size:20px}
+
+/* 數位名片：固定畫布，所有欄位均由畫布點擊開啟編輯器，避免雙欄內容同步與版面跳動 */
+.line-source-ecard-canvas{grid-template-columns:minmax(0,1fr)!important}
+.line-source-ecard-canvas .line-source-ecard-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.line-source-ecard-top>div{display:flex;align-items:center;gap:8px}
+.line-source-ecard-top .line-source-save{width:auto;min-height:38px;padding:0 14px}
+.line-source-canvas-tools{display:grid;gap:7px;max-width:480px}
+.line-source-canvas-tools .line-source-label{margin:0}
+.line-source-ecard-canvas .line-source-preview{grid-column:1;grid-row:auto;position:static;max-width:430px;width:100%;margin:0 auto}
+.line-source-preview-card{width:100%;min-height:0;contain:layout paint}
+.line-source-preview-body button{display:block;width:100%;border:0;background:transparent;cursor:pointer}
+.line-source-preview-body [data-ecard-edit="title"]{padding:0;color:#2a2030;font:700 20px/1.35 inherit;text-align:center}
+.line-source-preview-body [data-ecard-edit="description"]{margin-top:7px;padding:0;color:#6b5c68;font:13px/1.5 inherit;white-space:pre-line}
+.line-source-preview-body button:hover,.line-source-preview-body button:focus-visible{background:#f8eef1;outline:1px dashed #dca7b7;outline-offset:4px}
+.line-source-preview-add-button{border:1px dashed #d7a7b6!important;background:#fff7f9!important;color:#a34f69!important;font-size:12px!important}
+.line-source-editor-modal{position:fixed;inset:0;z-index:2200;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(20,15,18,.64);backdrop-filter:blur(4px)}
+.line-source-editor-modal.open{display:flex}
+.line-source-editor-sheet{width:min(100%,410px);max-height:calc(100vh - 40px);overflow:auto;border-radius:16px;background:#fff;box-shadow:0 24px 80px rgba(15,23,42,.35)}
+.line-source-editor-sheet header{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:15px 16px;border-bottom:1px solid #f0dce3;background:#fff}
+.line-source-editor-sheet h3{margin:0;color:#49333e;font-size:17px}
+.line-source-editor-sheet header button{display:grid;width:32px;height:32px;place-items:center;border:1px solid #e8cbd5;border-radius:50%;background:#fff;color:#a34f69;font-size:22px;line-height:1}
+#lineSourceEditorBody{display:grid;gap:13px;padding:16px}
+.line-source-editor-field{display:grid;gap:6px;color:#715969;font-size:12px;font-weight:800}
+.line-source-editor-field input,.line-source-editor-field textarea,.line-source-editor-field select{width:100%;box-sizing:border-box;border:1px solid #d8dfe9;border-radius:9px;padding:10px;background:#fff;color:#28364d;font:inherit}
+.line-source-editor-field textarea{resize:vertical;line-height:1.55}
+.line-source-editor-note{margin:0;color:#765e6a;font-size:13px;line-height:1.6}
+.line-source-editor-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.line-source-editor-primary,.line-source-editor-danger,.line-source-editor-actions>button:not(.line-source-editor-danger){min-height:42px;border:0;border-radius:9px;font:700 14px inherit;cursor:pointer}
+.line-source-editor-primary{background:#b96072;color:#fff}
+.line-source-editor-danger{border:1px solid #efc2ce;background:#fff7f8;color:#c1516a}
+@media(max-width:679px){.line-source-ecard-canvas .line-source-ecard-top{align-items:flex-start}.line-source-ecard-top>div{flex-wrap:wrap;justify-content:flex-end}.line-source-ecard-top .line-source-save{min-height:34px;padding:0 10px;font-size:12px!important}.line-source-preview-body [data-ecard-edit="title"]{font-size:19px}.line-source-editor-modal{align-items:flex-end;padding:0}.line-source-editor-sheet{width:100%;max-height:84vh;border-radius:18px 18px 0 0}}
