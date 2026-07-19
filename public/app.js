@@ -1023,6 +1023,20 @@ async function profile(required = false) {
 }
 async function boot() {
   state.config = await (await fetch("/api/config")).json();
+  // 邀約網址就是註冊入口：不顯示額外的登入門檻，直接完成 LIFF 身份驗證、
+  // 推薦關係建立，再進入會員註冊頁。
+  if (state.invite) {
+    $("#app").innerHTML = `<section class="center">正在確認 LINE 身份並開啟註冊頁…</section>`;
+    try {
+      await login();
+    } catch (error) {
+      clearLiffLoginPending();
+      await renderLogin();
+      const status = $("#loginStatus");
+      if (status) status.textContent = error.message || "LINE 登入未完成，請重新嘗試。";
+    }
+    return;
+  }
   if (hasPendingLiffLogin()) {
     $("#app").innerHTML = `<section class="center">正在完成 LINE 登入…</section>`;
     try {
