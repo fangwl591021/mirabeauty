@@ -10,8 +10,18 @@ export async function getWallet(db, userId) {
   `).bind(userId, MAIN_PROGRAM_ID).first();
   if (!account) return { balance: 0, programCode: 'main', programName: 'MiraBeauty 點數', entries: [] };
   const result = await db.prepare(`
-    SELECT event_type, event_reference, delta, balance_after, status, created_at
-    FROM point_ledger_entries WHERE point_account_id = ? ORDER BY created_at DESC LIMIT 50
+    SELECT le.event_type, le.event_reference, le.delta, le.balance_after, le.status, le.created_at,
+      date(le.created_at, '+8 hours') AS business_date,
+      json_extract(le.metadata_json, '$.referredUserId') AS referred_user_id,
+      mp.display_name AS referred_display_name,
+      COALESCE(cs.title, c.title, '') AS activity_title
+    FROM point_ledger_entries le
+    LEFT JOIN member_profiles mp
+      ON mp.platform_user_id = json_extract(le.metadata_json, '$.referredUserId')
+    LEFT JOIN course_sessions cs ON cs.id = le.event_reference
+    LEFT JOIN courses c ON c.id = cs.course_id
+    WHERE le.point_account_id = ?
+    ORDER BY le.created_at DESC LIMIT 200
   `).bind(account.id).all();
   return {
     balance: account.balance,
@@ -19,6 +29,36 @@ export async function getWallet(db, userId) {
     programName: account.program_name,
     entries: result.results || []
   };
+}
+
+export async function awardReferralAttendancePoints(db, {
+  referredUserId,
+  sessionId,
+  attendanceId = '',
+}) {
+  if (!referredUserId || !sessionId) throw new Error('Missing referral attendance fields');
+  const relationship = await db.prepare(`
+    SELECT rr.referrer_user_id
+    FROM referral_relationships rr
+    JOIN platform_users referrer
+      ON referrer.id = rr.referrer_user_id AND referrer.status = 'active'
+    JOIN course_registrations cr
+      ON cr.platform_user_id = rr.referred_user_id
+      AND cr.course_session_id = ?
+      AND cr.status = 'registered'
+    WHERE rr.referred_user_id = ? AND rr.status = 'active'
+    LIMIT 1
+  `).bind(sessionId, referredUserId).first();
+  if (!relationship?.referrer_user_id) {
+    return { awarded: false, reason: 'no_eligible_referrer' };
+  }
+  return awardPoints(db, {
+    userId: relationship.referrer_user_id,
+    eventType: 'referral_attendance_reward',
+    eventReference: sessionId,
+    idempotencyKey: `referral_attendance_reward:${sessionId}:${referredUserId}`,
+    metadata: { referredUserId, attendanceId },
+  });
 }
 
 export async function awardPoints(db, { userId, eventType, eventReference, idempotencyKey, metadata = {} }) {
