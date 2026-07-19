@@ -298,6 +298,9 @@ loadAdminIdentity();
 let checkinTemplateDraft = null;
 let checkinTemplates = [];
 let activeCheckinTemplateId = "";
+let templateDirectoryPage = 1;
+let templateDirectoryQuery = "";
+const templateDirectoryPageSize = 10;
 const esc = (value) => String(value ?? "").replace(/[&<>'\"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
 const sizes = ["nano","micro","deca","hecto","kilo","mega","giga"];
 const validSize = (x) => sizes.includes(String(x || "").toLowerCase()) ? String(x).toLowerCase() : "nano";
@@ -315,8 +318,19 @@ function collapsedTemplatePages(){return [...document.querySelectorAll("#templat
 function renderTemplateDirectory() {
   const directory=$("#templateGroupDirectory");
   if(!directory)return;
+  const query=templateDirectoryQuery.trim().toLowerCase();
+  const filtered=checkinTemplates.filter(item=>String(item.altText||"").toLowerCase().includes(query));
+  const totalPages=Math.max(1,Math.ceil(filtered.length/templateDirectoryPageSize));
+  templateDirectoryPage=Math.min(templateDirectoryPage,totalPages);
+  const start=(templateDirectoryPage-1)*templateDirectoryPageSize;
+  const visible=filtered.slice(start,start+templateDirectoryPageSize);
   const savedCount=checkinTemplates.filter(item=>!String(item.id||"").startsWith("draft_")).length;
-  directory.innerHTML=checkinTemplates.map((item,index)=>{
+  const count=$("#templateDirectoryCount"),page=$("#templateDirectoryPage"),prev=$("#templateDirectoryPrev"),next=$("#templateDirectoryNext");
+  if(count)count.textContent=`共 ${filtered.length} 組活動`;
+  if(page)page.textContent=`第 ${templateDirectoryPage} / ${totalPages} 頁`;
+  if(prev)prev.disabled=templateDirectoryPage<=1;
+  if(next)next.disabled=templateDirectoryPage>=totalPages;
+  directory.innerHTML=visible.length?visible.map((item,index)=>{
     const saved=!String(item.id||"").startsWith("draft_");
     const status=item.active!==false?"啟用":"停用";
     const created=saved?"已儲存":"草稿";
@@ -331,7 +345,7 @@ function renderTemplateDirectory() {
         ${saved?`<button type="button" class="templateDirDelete" data-template-directory-action="delete" ${savedCount<=1?"disabled":""}>刪除</button>`:""}
       </div></td>
     </tr>`;
-  }).join("");
+  }).join(""):`<tr><td colspan="5" class="crm-empty">找不到符合的標籤活動</td></tr>`;
 }
 function renderCheckinTemplate(template, collapsedPages=null) {
   const t=normalizeTemplate(template);
@@ -381,6 +395,9 @@ async function deleteCheckinGroup(id) {
     templateStatus("標籤及其素材已刪除。",true);
   }catch(error){templateStatus(error.message,false)}
 }
+$("#templateDirectorySearch")?.addEventListener("input",event=>{templateDirectoryQuery=event.target.value||"";templateDirectoryPage=1;renderTemplateDirectory()});
+$("#templateDirectoryPrev")?.addEventListener("click",()=>{templateDirectoryPage=Math.max(1,templateDirectoryPage-1);renderTemplateDirectory()});
+$("#templateDirectoryNext")?.addEventListener("click",()=>{templateDirectoryPage+=1;renderTemplateDirectory()});
 $("#templateGroupDirectory").addEventListener("click",event=>{
   const action=event.target.closest("[data-template-directory-action]")?.dataset.templateDirectoryAction;
   if(!action)return;
