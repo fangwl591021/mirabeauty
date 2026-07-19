@@ -840,6 +840,7 @@ function openLineSourceCardEditor(kind, context, index = -1) {
     return;
   }
   openLineSourceCardEditor("button", context, -1);
+}
 function renderLineSourcePreview(card, selected, buttons = []) {
   const preview = $("#my-ecard-preview-area"); if (!preview) return;
   const cover = $("#my-v1-img-url")?.value.trim() || "";
