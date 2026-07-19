@@ -395,6 +395,24 @@ async function deleteCheckinGroup(id) {
     templateStatus("標籤及其素材已刪除。",true);
   }catch(error){templateStatus(error.message,false)}
 }
+const checkinDesigner=$(".templateDesigner");
+const checkinDirectory=$(".checkinDirectoryPanel");
+const checkinDrawer=$("#templateEditorDrawer");
+const checkinBackdrop=$("#templateDrawerBackdrop");
+if(checkinDesigner&&checkinDirectory&&checkinDrawer)checkinDesigner.insertBefore(checkinDirectory,checkinDrawer);
+function openCheckinEditor(template){
+  if(template)renderCheckinTemplate(template,[]);
+  const label=template?.altText||checkinTemplateDraft?.altText||"簽到活動";
+  $("#templateDrawerTitle").textContent=`編輯：${label}`;
+  checkinDesigner?.classList.add("editor-open");
+  document.body.classList.add("template-drawer-open");
+}
+function closeCheckinEditor(){
+  checkinDesigner?.classList.remove("editor-open");
+  document.body.classList.remove("template-drawer-open");
+}
+$("#templateDrawerClose")?.addEventListener("click",closeCheckinEditor);
+checkinBackdrop?.addEventListener("click",closeCheckinEditor);
 $("#templateDirectorySearch")?.addEventListener("input",event=>{templateDirectoryQuery=event.target.value||"";templateDirectoryPage=1;renderTemplateDirectory()});
 $("#templateDirectoryPrev")?.addEventListener("click",()=>{templateDirectoryPage=Math.max(1,templateDirectoryPage-1);renderTemplateDirectory()});
 $("#templateDirectoryNext")?.addEventListener("click",()=>{templateDirectoryPage+=1;renderTemplateDirectory()});
@@ -404,9 +422,9 @@ $("#templateGroupDirectory").addEventListener("click",event=>{
   const row=event.target.closest("[data-template-id]"),id=row?.dataset.templateId;
   const template=checkinTemplates.find(item=>item.id===id);
   if(!template)return;
-  if(action==="edit")return renderCheckinTemplate(template);
+  if(action==="edit"){openCheckinEditor(template);return;}
   if(action==="rename")return renameCheckinGroup(id,row.querySelector("input")?.value);
   if(action==="delete")return deleteCheckinGroup(id);
 });
-$("#templateGroupSelect")?.addEventListener("change",(event)=>{const next=checkinTemplates.find(item=>item.id===event.target.value);if(next)renderCheckinTemplate(next)});$("#templateNewGroup").addEventListener("click",()=>{const t=defaultTemplate();t.id=`draft_${Date.now()}`;t.altText=`簽到活動 ${checkinTemplates.length+1}`;checkinTemplates=[...checkinTemplates,t];renderCheckinTemplate(t,[]);templateStatus("已建立新的簽到活動，請輸入標籤名稱並設定素材後儲存。",true)});$("#templateAddPage").addEventListener("click",()=>{const t=collectTemplate(),collapsed=collapsedTemplatePages();t.pages.push(defaultPage());renderCheckinTemplate(t,collapsed);templateStatus(`已新增第 ${t.pages.length} 頁，請上傳圖片。`,true)});$("#templateSave").addEventListener("click",saveCheckinTemplate);$("#templatePages").addEventListener("input",refreshTemplatePreview);$("#templatePages").addEventListener("change",async e=>{if(e.target.matches('[data-field="colorPicker"]'))e.target.closest(".templateColorRow").querySelector('[data-field="color"]').value=e.target.value.toUpperCase();if(e.target.matches('[data-field="imageFile"]'))await uploadTemplateImage(e.target);refreshTemplatePreview()});$("#templatePages").addEventListener("click",e=>{const button=e.target.closest("[data-template-action]");if(!button)return;const t=collectTemplate(),page=button.closest(".templatePage"),i=Number(page?.dataset.pageIndex),collapsed=collapsedTemplatePages();if(button.dataset.templateAction==="add-button")t.pages[i].buttons.push(defaultButton());if(button.dataset.templateAction==="remove-page"&&i>0){t.pages.splice(i,1);renderCheckinTemplate(t,collapsed.filter(x=>x!==i).map(x=>x>i?x-1:x));return}if(button.dataset.templateAction==="remove-button"){const j=Number(button.closest(".templateButton")?.dataset.buttonIndex);if(j>=0)t.pages[i].buttons.splice(j,1)}renderCheckinTemplate(t,collapsed)});["#templateEntryUrl","#templateAltText","#templateRotationMode","#templateActive"].forEach(id=>$(id).addEventListener("input",refreshTemplatePreview));
+$("#templateGroupSelect")?.addEventListener("change",(event)=>{const next=checkinTemplates.find(item=>item.id===event.target.value);if(next)renderCheckinTemplate(next)});$("#templateNewGroup").addEventListener("click",()=>{const t=defaultTemplate();t.id=`draft_${Date.now()}`;t.altText=`簽到活動 ${checkinTemplates.length+1}`;checkinTemplates=[...checkinTemplates,t];openCheckinEditor(t);templateStatus("已建立新的簽到活動，請輸入標籤名稱並設定素材後儲存。",true)});$("#templateAddPage").addEventListener("click",()=>{const t=collectTemplate(),collapsed=collapsedTemplatePages();t.pages.push(defaultPage());renderCheckinTemplate(t,collapsed);templateStatus(`已新增第 ${t.pages.length} 頁，請上傳圖片。`,true)});$("#templateSave").addEventListener("click",saveCheckinTemplate);$("#templatePages").addEventListener("input",refreshTemplatePreview);$("#templatePages").addEventListener("change",async e=>{if(e.target.matches('[data-field="colorPicker"]'))e.target.closest(".templateColorRow").querySelector('[data-field="color"]').value=e.target.value.toUpperCase();if(e.target.matches('[data-field="imageFile"]'))await uploadTemplateImage(e.target);refreshTemplatePreview()});$("#templatePages").addEventListener("click",e=>{const button=e.target.closest("[data-template-action]");if(!button)return;const t=collectTemplate(),page=button.closest(".templatePage"),i=Number(page?.dataset.pageIndex),collapsed=collapsedTemplatePages();if(button.dataset.templateAction==="add-button")t.pages[i].buttons.push(defaultButton());if(button.dataset.templateAction==="remove-page"&&i>0){t.pages.splice(i,1);renderCheckinTemplate(t,collapsed.filter(x=>x!==i).map(x=>x>i?x-1:x));return}if(button.dataset.templateAction==="remove-button"){const j=Number(button.closest(".templateButton")?.dataset.buttonIndex);if(j>=0)t.pages[i].buttons.splice(j,1)}renderCheckinTemplate(t,collapsed)});["#templateEntryUrl","#templateAltText","#templateRotationMode","#templateActive"].forEach(id=>$(id).addEventListener("input",refreshTemplatePreview));
 $("#copyTemplateEntry").addEventListener("click", async () => { await navigator.clipboard.writeText(dailyEntryUrl()); templateStatus("活動入口網址已複製。", true); });
