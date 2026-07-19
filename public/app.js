@@ -67,6 +67,11 @@ const state = {
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
 let loginInProgress = false;
+// 必須在 liff.init() 消耗 OAuth 參數前先記住是否為登入回跳。
+const liffLoginCallbackAtLoad = (() => {
+  const params = new URLSearchParams(location.search);
+  return params.has("code") && params.has("state");
+})();
 // LIFF 的 OAuth code 僅能兌換一次。整個頁面生命週期只能初始化一次，
 // 否則在名片分享時再次 init 會重新使用網址上殘留的 code，導致
 // "invalid authorization code" 而無法開啟分享對象選擇器。
@@ -82,7 +87,18 @@ function cleanLiffRedirectUrl() {
   return redirect.toString();
 }
 function hasPendingLiffLogin() {
-  return sessionStorage.getItem("mirabeauty_liff_login_pending") === "1";
+  const sessionPending = sessionStorage.getItem("mirabeauty_liff_login_pending") === "1";
+  const pendingAt = Number(localStorage.getItem("mirabeauty_liff_login_pending_at") || 0);
+  const recentPersistentPending = pendingAt > 0 && Date.now() - pendingAt < 120000;
+  return liffLoginCallbackAtLoad || sessionPending || recentPersistentPending;
+}
+function markLiffLoginPending() {
+  sessionStorage.setItem("mirabeauty_liff_login_pending", "1");
+  localStorage.setItem("mirabeauty_liff_login_pending_at", String(Date.now()));
+}
+function clearLiffLoginPending() {
+  sessionStorage.removeItem("mirabeauty_liff_login_pending");
+  localStorage.removeItem("mirabeauty_liff_login_pending_at");
 }
 async function initLiffOnce() {
   if (!state.config?.liffId) throw new Error("尚未設定 LIFF_ID");
@@ -160,11 +176,12 @@ async function login() {
   if (!liff.isLoggedIn()) {
     // LINE Login 完成後會重新載入 LIFF；保留標記，讓 boot() 自動續跑
     // 身份驗證，而不是停在原本的登入按鈕頁面等使用者再點一次。
-    sessionStorage.setItem("mirabeauty_liff_login_pending", "1");
+    markLiffLoginPending();
     liff.login({ redirectUri: cleanLiffRedirectUrl() });
     // 若 LINE 沒有成功開啟授權頁，數秒後解除鎖定，讓使用者可以重試。
     setTimeout(() => {
       if (document.visibilityState === "visible" && !liff.isLoggedIn()) {
+        clearLiffLoginPending();
         loginInProgress = false;
         const button = $("#login");
         if (button) {
@@ -177,7 +194,7 @@ async function login() {
     }, 8000);
     return;
   }
-  sessionStorage.removeItem("mirabeauty_liff_login_pending");
+  clearLiffLoginPending();
   const status = $("#loginStatus");
   if (status) status.textContent = "LINE 身份已確認，正在建立會員資料…";
   const idToken = liff.getIDToken();
@@ -217,6 +234,7 @@ async function startLogin() {
   try {
     await login();
   } catch (error) {
+    clearLiffLoginPending();
     loginInProgress = false;
     if (button) {
       button.disabled = false;
@@ -1000,7 +1018,14 @@ async function boot() {
   state.config = await (await fetch("/api/config")).json();
   if (hasPendingLiffLogin()) {
     $("#app").innerHTML = `<section class="center">正在完成 LINE 登入…</section>`;
-    await login();
+    try {
+      await login();
+    } catch (error) {
+      clearLiffLoginPending();
+      await renderLogin();
+      const status = $("#loginStatus");
+      if (status) status.textContent = error.message || "LINE 登入未完成，請重新嘗試。";
+    }
     return;
   }
   await render();
