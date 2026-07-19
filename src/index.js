@@ -108,7 +108,7 @@ function normalizeTemplateImageUrl(value) {
 function courseCheckinCompactLiffHtml(env, origin) {
   const liffId = String(env.CHECKIN_LIFF_ID || "");
   const apiOrigin = String(origin || "");
-  return new Response(\`<!doctype html>
+  return new Response(`<!doctype html>
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
@@ -144,7 +144,7 @@ function courseCheckinCompactLiffHtml(env, origin) {
       show(result.duplicate?"本課程已完成報到":"課程報到成功",result.duplicate?"你已完成本場簽到。":"已核對報名與報到時間，簽到點數將依規則入帳。","success");close();
     }catch(error){show("暫時無法完成報到",error.message||"請稍後再試","error");close();}
   })();
-</script></body></html>\`,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+</script></body></html>`,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
 
 async function app(request, env) {
