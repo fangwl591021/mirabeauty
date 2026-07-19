@@ -172,7 +172,14 @@ async function app(request, env) {
   if (request.method === "GET" && (url.pathname === "/r/checkin" || url.pathname === "/r/course-checkin")) {
     // Same two-step Compact LIFF pattern as MLM:
     // QR -> LIFF -> this endpoint with liff.state -> compact verification screen.
-    if (env.CHECKIN_LIFF_ID && url.searchParams.has("liff.state")) {
+    // LIFF 初次開啟帶 liff.state；LINE Login OAuth 回跳則帶 code/state。
+    // 兩種都必須回到 Compact 頁交給 liff.init 消耗 code，不能再 redirect 回
+    // liff.line.me，否則會在 LIFF 與登入頁之間無限循環。
+    if (
+      env.CHECKIN_LIFF_ID &&
+      (url.searchParams.has("liff.state") ||
+        (url.searchParams.has("code") && url.searchParams.has("state")))
+    ) {
       return courseCheckinCompactLiffHtml(env, url.origin);
     }
     const liffId = env.CHECKIN_LIFF_ID || env.LIFF_ID;
