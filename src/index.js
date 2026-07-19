@@ -52,11 +52,15 @@ import {
 import {
   collectPublicCard,
   confirmImport,
+  createContactShare,
   createImport,
   deleteContact,
   listContacts,
+  getSharedContact,
   recognizeImport,
+  revokeContactShare,
   serveContactImage,
+  serveSharedContactImage,
   updateContact,
 } from "./card-collection.js";
 import {
@@ -199,6 +203,10 @@ async function app(request, env) {
   if (request.method === "GET" && publicCardPath) {
     return Response.redirect(`${url.origin}/?publicCard=${encodeURIComponent(publicCardPath[1])}`, 302);
   }
+  const sharedContactPath = url.pathname.match(/^\/d\/([A-Fa-f0-9]{48})$/);
+  if (request.method === "GET" && sharedContactPath) {
+    return Response.redirect(`${url.origin}/?sharedContact=${encodeURIComponent(sharedContactPath[1])}`, 302);
+  }
   if (request.method === "GET" && (url.pathname === "/r/checkin" || url.pathname === "/r/course-checkin")) {
     // Same two-step Compact LIFF pattern as MLM:
     // QR -> LIFF -> this endpoint with liff.state -> compact verification screen.
@@ -251,6 +259,15 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     return serveContactImage(env.DB, env.MEDIA, request, member.userId, decodeURIComponent(contactImage[1]));
+  }
+  const sharedContactImage = url.pathname.match(/^\/v1\/card-collection\/shared\/([A-Fa-f0-9]{48})\/image$/);
+  if (["GET", "HEAD"].includes(request.method) && sharedContactImage) {
+    return serveSharedContactImage(env.DB,env.MEDIA,request,sharedContactImage[1]);
+  }
+  const sharedContact = url.pathname.match(/^\/v1\/card-collection\/shared\/([A-Fa-f0-9]{48})$/);
+  if (request.method === "GET" && sharedContact) {
+    const card=await getSharedContact(env.DB,sharedContact[1]);
+    return card?json({success:true,card:{...card,imageUrl:card.hasImage?`/v1/card-collection/shared/${sharedContact[1]}/image`:''}}):json({success:false,error:'分享名片不存在或已停止分享'},404);
   }
   if (request.method === "GET" && url.pathname === "/api/health") {
     return json({
@@ -436,6 +453,15 @@ async function app(request, env) {
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try { await deleteContact(env.DB, env.MEDIA, member.userId, decodeURIComponent(contactCardMatch[1])); return json({ success: true }); }
     catch (error) { return badRequest(error.message || "收藏名片刪除失敗"); }
+  }
+  const contactShareMatch = url.pathname.match(/^\/v1\/card-collection\/([^/]+)\/share$/);
+  if (request.method === "POST" && contactShareMatch) {
+    const member=await currentMember(request,env);if(!member)return json({success:false,error:'Unauthorized'},401);
+    try{return json({success:true,share:await createContactShare(env.DB,member.userId,decodeURIComponent(contactShareMatch[1]),url.origin)},201)}catch(error){return badRequest(error.message||'名片分享連結建立失敗')}
+  }
+  if (request.method === "DELETE" && contactShareMatch) {
+    const member=await currentMember(request,env);if(!member)return json({success:false,error:'Unauthorized'},401);
+    try{return json({success:true,...await revokeContactShare(env.DB,member.userId,decodeURIComponent(contactShareMatch[1]))})}catch(error){return badRequest(error.message||'停止分享失敗')}
   }
 
   if (request.method === "PATCH" && url.pathname === "/v1/me") {
