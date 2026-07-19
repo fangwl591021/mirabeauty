@@ -30,6 +30,10 @@ const publicCardFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("publicCard") || ""; }
   catch { return ""; }
 };
+const sharedContactFromLocation = () => {
+  const params=new URLSearchParams(location.search);if(params.get("sharedContact"))return params.get("sharedContact");
+  const liffState=params.get("liff.state");if(!liffState)return "";try{return new URL(liffState,location.origin).searchParams.get("sharedContact")||""}catch{return ""}
+};
 const cardShareIdFromLocation = () => {
   const params = new URLSearchParams(location.search);
   if (params.get("shareCardId")) return params.get("shareCardId");
@@ -55,6 +59,7 @@ const state = {
   courseSession: courseSessionFromLocation() || sessionStorage.getItem("mirabeauty_course_session") || "",
   smartCheckin: smartCheckinFromLocation() || sessionStorage.getItem("mirabeauty_smart_checkin") === "1",
   publicCard: publicCardFromLocation(),
+  sharedContact: sharedContactFromLocation(),
   cardShareId: cardShareIdFromLocation() || sessionStorage.getItem("mirabeauty_card_share_id") || "",
   cardShareMode: cardShareModeFromLocation() || sessionStorage.getItem("mirabeauty_card_share_mode") === "1",
   pendingCardShareId: sessionStorage.getItem("mirabeauty_pending_card_share_id") || "",
@@ -272,6 +277,7 @@ async function render() {
   if (state.pendingCardShareId) return resumePendingCardShare();
   if (state.cardShareMode && state.cardShareId) return shareCardFromHeader();
   if (state.publicCard) return publicCard();
+  if (state.sharedContact) return publicSharedContact();
   if (!state.token) return renderLogin();
   try {
     state.member = (await api("/v1/me")).member;
@@ -1083,7 +1089,7 @@ async function showContactEditor(card) {
       value.address && {label:"查看地圖",href:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.address)}`,external:true},
     ].filter(Boolean);
     const rows=[["手機",value.mobile],["公司電話",value.companyPhone],["Email",value.email],["地址",value.address]].filter(([,text])=>text);
-    return `<article class="collected-digital-card"><div class="collected-digital-cover">${card.hasImage?`<img id="collectedDigitalImage" alt="${esc(value.displayName)} 的原始名片">`:`<span>${esc((value.displayName||"名").slice(0,1))}</span>`}</div><div class="collected-digital-body"><p class="collected-digital-eyebrow">電子名片</p><h2>${esc(value.displayName||"未命名名片")}</h2>${value.englishName?`<p class="collected-digital-english">${esc(value.englishName)}</p>`:""}<h3>${esc(value.companyName)}</h3>${position?`<p>${esc(position)}</p>`:""}${value.serviceDescription?`<div class="collected-digital-service">${esc(value.serviceDescription)}</div>`:""}<div class="collected-digital-details">${rows.map(([label,text])=>`<div><small>${label}</small><strong>${esc(text)}</strong></div>`).join("")}</div><div class="collected-digital-actions">${actions.map(action=>`<a href="${esc(action.href)}" ${action.external?'target="_blank" rel="noopener"':""}>${esc(action.label)}</a>`).join("")}</div></div></article><p class="collection-private-note">此電子名片僅供你的私人收藏與聯絡使用；私人備註不會顯示在名片上。</p>`;
+    return `<article class="collected-digital-card"><div class="collected-digital-cover">${card.hasImage?`<img id="collectedDigitalImage" alt="${esc(value.displayName)} 的原始名片">`:`<span>${esc((value.displayName||"名").slice(0,1))}</span>`}</div><div class="collected-digital-body"><p class="collected-digital-eyebrow">電子名片</p><h2>${esc(value.displayName||"未命名名片")}</h2>${value.englishName?`<p class="collected-digital-english">${esc(value.englishName)}</p>`:""}<h3>${esc(value.companyName)}</h3>${position?`<p>${esc(position)}</p>`:""}${value.serviceDescription?`<div class="collected-digital-service">${esc(value.serviceDescription)}</div>`:""}<div class="collected-digital-details">${rows.map(([label,text])=>`<div><small>${label}</small><strong>${esc(text)}</strong></div>`).join("")}</div><div class="collected-digital-actions">${actions.map(action=>`<a href="${esc(action.href)}" ${action.external?'target="_blank" rel="noopener"':""}>${esc(action.label)}</a>`).join("")}</div></div></article><div class="collection-share-actions"><button class="btn" id="shareCollectedCard">分享電子名片</button><button class="btn alt" id="stopCollectedCardShare">停止既有分享</button></div><p class="collection-private-note">公開分享不包含私人備註、收藏者資料或系統 ID；停止分享後舊網址會立即失效。</p>`;
   };
   layout(`<section class="card collection-review collection-editor"><nav class="collection-editor-tabs"><button class="active" type="button" data-collection-tab="content">編輯內容</button><button type="button" data-collection-tab="digital">電子名片</button></nav><section id="collectionContentPanel"><div class="collection-editor-title"><button class="back-card" id="backCollection" aria-label="返回">‹</button><h2>編輯收藏名片</h2></div>${collectionForm(card)}<div class="collection-editor-actions"><button class="btn" id="saveContact">儲存</button><button class="btn danger" id="deleteContact">刪除名片</button></div></section><section id="collectionDigitalPanel" class="hidden"></section></section>`);
   $("#backCollection").onclick=()=>cardCollection();
@@ -1091,10 +1097,16 @@ async function showContactEditor(card) {
   const showDigital=async()=>{
     const panel=$("#collectionDigitalPanel");panel.innerHTML=digitalCardMarkup(readCollectionForm());
     if(card.hasImage){digitalImageUrl=digitalImageUrl||await authorizedImageUrl(card);const image=$("#collectedDigitalImage");if(image&&digitalImageUrl)image.src=digitalImageUrl;}
+    $("#shareCollectedCard").onclick=async()=>{const button=$("#shareCollectedCard");try{await withActionFeedback(button,async()=>{const result=await api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"POST",body:"{}"});const share=result.share,text=`${share.displayName||"電子名片"}\n${share.url}`;if(window.liff){try{await initLiffOnce();if(liff.isApiAvailable?.("shareTargetPicker")){await liff.shareTargetPicker([{type:"text",text}]);return}}catch{}}if(navigator.share){await navigator.share({title:`${share.displayName||"電子名片"}`,text:"電子名片",url:share.url});return}await navigator.clipboard.writeText(share.url);alert("分享網址已複製");},{busy:"建立分享中…",success:"已建立分享"})}catch(error){if(error?.name!=="AbortError")alert(error.message||"分享失敗")}};
+    $("#stopCollectedCardShare").onclick=async()=>{if(!confirm("確定停止這張名片目前的公開分享？舊網址將立即失效。"))return;const button=$("#stopCollectedCardShare");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"DELETE"}),{busy:"停止分享中…",success:"已停止分享"})}catch(error){alert(error.message||"停止分享失敗")}};
   };
   document.querySelectorAll("[data-collection-tab]").forEach(button=>button.onclick=async()=>{const digital=button.dataset.collectionTab==="digital";document.querySelectorAll("[data-collection-tab]").forEach(item=>item.classList.toggle("active",item===button));$("#collectionContentPanel").classList.toggle("hidden",digital);$("#collectionDigitalPanel").classList.toggle("hidden",!digital);if(digital)await showDigital();});
   $("#saveContact").onclick=async()=>{const button=$("#saveContact");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"PATCH",body:JSON.stringify(readCollectionForm())}),{busy:"儲存中…",success:"已儲存"});await cardCollection();}catch(error){alert(error.message)}};
   $("#deleteContact").onclick=async()=>{if(!confirm(`確定刪除「${card.displayName}」？圖片也會一併刪除並釋放空間。`))return;const button=$("#deleteContact");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"DELETE"}),{busy:"刪除中…",success:"已刪除"});await cardCollection();}catch(error){alert(error.message)}};
+}
+
+async function publicSharedContact(){
+  try{const result=await api(`/v1/card-collection/shared/${encodeURIComponent(state.sharedContact)}`),card=result.card,actions=cardActionItems(card);$("#app").innerHTML=`<section class="public-card-page">${card.imageUrl?`<img class="public-card-cover collected-public-cover" src="${esc(card.imageUrl)}" alt="${esc(card.displayName)} 的電子名片">`:""}<section class="public-card-body"><p class="collected-digital-eyebrow">電子名片</p><h1>${esc(card.displayName)}</h1>${card.englishName?`<p class="muted">${esc(card.englishName)}</p>`:""}<h2>${esc(card.companyName)}</h2><p>${esc([card.jobTitle,card.department].filter(Boolean).join("｜"))}</p>${card.serviceDescription?`<p class="public-card-service">${esc(card.serviceDescription)}</p>`:""}${cardContactRows(card)}<div class="business-card-contact-actions">${actions.map(item=>`<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type)?'target="_blank" rel="noopener"':""}>${esc(item.label)}</a>`).join("")}</div><p class="collection-private-note">此電子名片由名片收藏者整理分享。</p><button class="btn alt" id="openSharedMemberHome">開啟 MiraBeauty 會員中心</button></section></section>`;$("#openSharedMemberHome").onclick=()=>{state.sharedContact="";history.replaceState({},"",location.pathname);render()}}catch(error){$("#app").innerHTML=`<section class="center">${esc(error.message||"分享名片不存在或已停止分享")}</section>`}
 }
 
 async function cardCollection(search = "") {
