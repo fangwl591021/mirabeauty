@@ -59,6 +59,13 @@ import {
   serveContactImage,
   updateContact,
 } from "./card-collection.js";
+import {
+  deleteOpenAIKey,
+  getOpenAIKeyStatus,
+  resolveOpenAIKey,
+  saveOpenAIKey,
+  testOpenAIKey,
+} from "./openai-settings.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -399,7 +406,8 @@ async function app(request, env) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
-      const result = await recognizeImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(recognizeCardImport[1]), env.OPENAI_API_KEY, env.OPENAI_CARD_MODEL);
+      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+      const result = await recognizeImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(recognizeCardImport[1]), openAIKey, env.OPENAI_CARD_MODEL);
       return json({ success: true, ...result });
     } catch (error) { return badRequest(error.message || "名片辨識失敗"); }
   }
@@ -533,6 +541,28 @@ async function app(request, env) {
     }
     if (url.pathname.startsWith("/v1/admin/rich-menu") && !admin.adminAccess.canManageRichMenu) {
       return json({ success: false, error: "圖文選單管理權限不足" }, 403);
+    }
+    if (url.pathname.startsWith("/v1/admin/openai-settings") && !admin.adminAccess.systemAccess) {
+      return json({ success: false, error: "只有系統權限管理員可設定 API 金鑰" }, 403);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/admin/openai-settings") {
+      return json({ success:true, ...(await getOpenAIKeyStatus(env.DB, env.OPENAI_API_KEY)) });
+    }
+    if (request.method === "PUT" && url.pathname === "/v1/admin/openai-settings") {
+      try {
+        const result = await saveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, admin.userId, ((await readJson(request)) || {}).apiKey);
+        await env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.openai_key.updated','{}')").bind(newId('audit'),admin.userId,admin.userId).run();
+        return json({ success:true, ...result });
+      } catch(error) { return badRequest(error.message || "OpenAI API 金鑰儲存失敗"); }
+    }
+    if (request.method === "POST" && url.pathname === "/v1/admin/openai-settings/test") {
+      try { return json({ success:true, ...(await testOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY)) }); }
+      catch(error) { return badRequest(error.message || "OpenAI 連線測試失敗"); }
+    }
+    if (request.method === "DELETE" && url.pathname === "/v1/admin/openai-settings") {
+      await deleteOpenAIKey(env.DB);
+      await env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.openai_key.deleted','{}')").bind(newId('audit'),admin.userId,admin.userId).run();
+      return json({ success:true, ...(await getOpenAIKeyStatus(env.DB, env.OPENAI_API_KEY)) });
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/media-assets") {
       try {
