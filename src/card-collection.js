@@ -1,4 +1,5 @@
 import { newId } from './member-repository.js';
+import { sha256 } from './auth.js';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -138,4 +139,46 @@ export async function collectPublicCard(db,userId,personalCardId) {
   const card=cleanCard({displayName:source.display_name,englishName:source.english_name,companyName:source.company_name,jobTitle:source.job_title,department:source.department,mobile:source.mobile,companyPhone:source.company_phone,email:source.email,websiteUrl:source.website_url,lineUrl:source.line_url,address:source.address,serviceDescription:source.service_description});
   const duplicate=await findDuplicate(db,userId,card); if(duplicate)return {card:rowToCard(duplicate),duplicate:true};
   const id=newId('contact'); await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_type,source_personal_card_id,bound_user_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,normalized_mobile,normalized_email,normalized_name_company) VALUES (?,?,\'public_card\',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,personalCardId,source.platform_user_id,card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany).run(); return {card:rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first()),duplicate:false};
+}
+
+function randomShareToken() {
+  const bytes=crypto.getRandomValues(new Uint8Array(24));
+  return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('');
+}
+
+export async function createContactShare(db,userId,contactId,origin) {
+  const card=await db.prepare("SELECT id,display_name FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(contactId,userId).first();
+  if(!card)throw new Error('找不到收藏名片');
+  const token=randomShareToken();
+  await db.batch([
+    db.prepare("UPDATE contact_card_shares SET status='revoked',revoked_at=CURRENT_TIMESTAMP WHERE contact_card_id=? AND owner_user_id=? AND status='active'").bind(contactId,userId),
+    db.prepare("INSERT INTO contact_card_shares (id,contact_card_id,owner_user_id,token_hash) VALUES (?,?,?,?)").bind(newId('contact_share'),contactId,userId,await sha256(token)),
+  ]);
+  return { url:`${origin}/d/${token}`, displayName:card.display_name };
+}
+
+export async function revokeContactShare(db,userId,contactId) {
+  const result=await db.prepare("UPDATE contact_card_shares SET status='revoked',revoked_at=CURRENT_TIMESTAMP WHERE contact_card_id=? AND owner_user_id=? AND status='active'").bind(contactId,userId).run();
+  return { revoked:Number(result.meta?.changes || 0)>0 };
+}
+
+async function sharedContactRow(db,rawToken) {
+  const token=String(rawToken||'').trim();
+  if(!/^[a-f0-9]{48}$/i.test(token))return null;
+  return db.prepare(`SELECT cc.* FROM contact_card_shares ccs JOIN contact_cards cc ON cc.id=ccs.contact_card_id
+    WHERE ccs.token_hash=? AND ccs.status='active' AND cc.status='active' LIMIT 1`).bind(await sha256(token)).first();
+}
+
+export async function getSharedContact(db,rawToken) {
+  const row=await sharedContactRow(db,rawToken);
+  if(!row)return null;
+  // 僅以明確 allowlist 輸出；私人備註、收藏者、來源、內部 ID 與時間均不公開。
+  return { displayName:row.display_name,englishName:row.english_name,companyName:row.company_name,jobTitle:row.job_title,department:row.department,mobile:row.mobile,companyPhone:row.company_phone,email:row.email,websiteUrl:row.website_url,lineUrl:row.line_url,address:row.address,serviceDescription:row.service_description,hasImage:Boolean(row.front_r2_key) };
+}
+
+export async function serveSharedContactImage(db,bucket,request,rawToken) {
+  const row=await sharedContactRow(db,rawToken);
+  if(!row?.front_r2_key)return new Response('Not found',{status:404});
+  const object=await bucket.get(row.front_r2_key);if(!object)return new Response('Not found',{status:404});
+  return new Response(request.method==='HEAD'?null:object.body,{headers:{'content-type':object.httpMetadata?.contentType||row.front_content_type||'image/webp','cache-control':'public, max-age=300','x-content-type-options':'nosniff'}});
 }
