@@ -65,6 +65,8 @@ async function overview() {
     if (pointNav) pointNav.hidden = !adminAccess?.canManagePoints;
     const richMenuNav = document.querySelector('[data-page="richmenu"]');
     if (richMenuNav) richMenuNav.hidden = !adminAccess?.canManageRichMenu;
+    const openAISettings = $("#openAISettingsPanel");
+    if (openAISettings) openAISettings.hidden = !adminAccess?.systemAccess;
     const x = data.overview;
     $("#metricMembers").textContent = format(x.members);
     $("#memberTotal").textContent = format(x.members);
@@ -107,7 +109,20 @@ function switchPage(page) {
   if (page === "courses") loadCourses();
   if (page === "calendar") loadCalendar();
   if (page === "richmenu") loadRichMenuToken();
+  if (page === "settings" && adminAccess?.systemAccess) loadOpenAISettings();
 }
+
+function renderOpenAIStatus(data) {
+  const status=$("#openAIKeyStatus"); if(!status)return;
+  const source=data?.source==="database"?"後台加密儲存":data?.source==="environment"?"Worker 環境密鑰":"尚未設定";
+  status.textContent=data?.configured?`${source}${data.masked?` · ${data.masked}`:""}`:source;
+  status.classList.toggle("configured",Boolean(data?.configured));
+  const remove=$("#deleteOpenAIKey"); if(remove)remove.disabled=data?.source!=="database";
+}
+async function loadOpenAISettings(){try{renderOpenAIStatus(await api("/v1/admin/openai-settings"))}catch(error){showStatus(error.message,"error")}}
+async function saveOpenAISetting(button){const input=$("#openAIKey"),apiKey=String(input?.value||"").trim();if(!apiKey)return showStatus("請貼上 OpenAI API Key","error");try{await withButtonFeedback(button,async()=>{const result=await api("/v1/admin/openai-settings",{apiKey},"PUT");input.value="";renderOpenAIStatus(result);showStatus("OpenAI API Key 已驗證並加密儲存")},{busy:"驗證儲存中…",success:"已儲存"})}catch(error){showStatus(error.message,"error")}}
+async function testOpenAISetting(button){try{await withButtonFeedback(button,async()=>{const result=await api("/v1/admin/openai-settings/test",{});renderOpenAIStatus(result);showStatus("OpenAI API 連線正常")},{busy:"測試連線中…",success:"連線正常"})}catch(error){showStatus(error.message,"error")}}
+async function removeOpenAISetting(button){if(!confirm("確定刪除後台儲存的 OpenAI API Key？刪除後將改用 Worker 環境密鑰（若有設定）。"))return;try{await withButtonFeedback(button,async()=>{const result=await api("/v1/admin/openai-settings",undefined,"DELETE");renderOpenAIStatus(result);showStatus(result.configured?"後台金鑰已刪除，已改用 Worker 環境密鑰":"OpenAI API Key 已刪除")},{busy:"刪除中…",success:"已刪除"})}catch(error){showStatus(error.message,"error")}}
 function renderRichMenuTokenStatus(data) {
   const status = $("#richMenuTokenStatus");
   if (!status) return;
@@ -244,6 +259,9 @@ $("#refreshMembers").addEventListener("click", (event) =>
 $("#memberSearch").addEventListener("input", renderMembers);
 $("#saveRichMenuToken")?.addEventListener("click", event => saveRichMenuToken(event.currentTarget));
 $("#testRichMenuToken")?.addEventListener("click", event => testRichMenuToken(event.currentTarget));
+$("#saveOpenAIKey")?.addEventListener("click",event=>saveOpenAISetting(event.currentTarget));
+$("#testOpenAIKey")?.addEventListener("click",event=>testOpenAISetting(event.currentTarget));
+$("#deleteOpenAIKey")?.addEventListener("click",event=>removeOpenAISetting(event.currentTarget));
 $("#logout").addEventListener("click", () => {
   localStorage.removeItem("mirabeauty_session");
   location.href = "/";
