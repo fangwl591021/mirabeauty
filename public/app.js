@@ -1072,8 +1072,27 @@ function showCollectionReview(eventId, card, confidence) {
 }
 
 async function showContactEditor(card) {
-  layout(`<section class="card collection-review"><button class="back-card" id="backCollection" aria-label="返回">‹</button><h2>編輯收藏名片</h2>${collectionForm(card)}<div class="collection-editor-actions"><button class="btn" id="saveContact">儲存</button><button class="btn danger" id="deleteContact">刪除名片</button></div></section>`);
+  const digitalCardMarkup = (value) => {
+    const position=[value.jobTitle,value.department].filter(Boolean).join("｜");
+    const actions=[
+      value.mobile && {label:"撥打手機",href:`tel:${String(value.mobile).replace(/[^+0-9]/g,"")}`},
+      value.companyPhone && {label:"公司電話",href:`tel:${String(value.companyPhone).replace(/[^+0-9]/g,"")}`},
+      value.email && {label:"寄送 Email",href:`mailto:${value.email}`},
+      /^https?:\/\//i.test(value.lineUrl) && {label:"開啟 LINE",href:value.lineUrl,external:true},
+      /^https?:\/\//i.test(value.websiteUrl) && {label:"公司網站",href:value.websiteUrl,external:true},
+      value.address && {label:"查看地圖",href:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value.address)}`,external:true},
+    ].filter(Boolean);
+    const rows=[["手機",value.mobile],["公司電話",value.companyPhone],["Email",value.email],["地址",value.address]].filter(([,text])=>text);
+    return `<article class="collected-digital-card"><div class="collected-digital-cover">${card.hasImage?`<img id="collectedDigitalImage" alt="${esc(value.displayName)} 的原始名片">`:`<span>${esc((value.displayName||"名").slice(0,1))}</span>`}</div><div class="collected-digital-body"><p class="collected-digital-eyebrow">電子名片</p><h2>${esc(value.displayName||"未命名名片")}</h2>${value.englishName?`<p class="collected-digital-english">${esc(value.englishName)}</p>`:""}<h3>${esc(value.companyName)}</h3>${position?`<p>${esc(position)}</p>`:""}${value.serviceDescription?`<div class="collected-digital-service">${esc(value.serviceDescription)}</div>`:""}<div class="collected-digital-details">${rows.map(([label,text])=>`<div><small>${label}</small><strong>${esc(text)}</strong></div>`).join("")}</div><div class="collected-digital-actions">${actions.map(action=>`<a href="${esc(action.href)}" ${action.external?'target="_blank" rel="noopener"':""}>${esc(action.label)}</a>`).join("")}</div></div></article><p class="collection-private-note">此電子名片僅供你的私人收藏與聯絡使用；私人備註不會顯示在名片上。</p>`;
+  };
+  layout(`<section class="card collection-review collection-editor"><nav class="collection-editor-tabs"><button class="active" type="button" data-collection-tab="content">編輯內容</button><button type="button" data-collection-tab="digital">電子名片</button></nav><section id="collectionContentPanel"><div class="collection-editor-title"><button class="back-card" id="backCollection" aria-label="返回">‹</button><h2>編輯收藏名片</h2></div>${collectionForm(card)}<div class="collection-editor-actions"><button class="btn" id="saveContact">儲存</button><button class="btn danger" id="deleteContact">刪除名片</button></div></section><section id="collectionDigitalPanel" class="hidden"></section></section>`);
   $("#backCollection").onclick=()=>cardCollection();
+  let digitalImageUrl="";
+  const showDigital=async()=>{
+    const panel=$("#collectionDigitalPanel");panel.innerHTML=digitalCardMarkup(readCollectionForm());
+    if(card.hasImage){digitalImageUrl=digitalImageUrl||await authorizedImageUrl(card);const image=$("#collectedDigitalImage");if(image&&digitalImageUrl)image.src=digitalImageUrl;}
+  };
+  document.querySelectorAll("[data-collection-tab]").forEach(button=>button.onclick=async()=>{const digital=button.dataset.collectionTab==="digital";document.querySelectorAll("[data-collection-tab]").forEach(item=>item.classList.toggle("active",item===button));$("#collectionContentPanel").classList.toggle("hidden",digital);$("#collectionDigitalPanel").classList.toggle("hidden",!digital);if(digital)await showDigital();});
   $("#saveContact").onclick=async()=>{const button=$("#saveContact");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"PATCH",body:JSON.stringify(readCollectionForm())}),{busy:"儲存中…",success:"已儲存"});await cardCollection();}catch(error){alert(error.message)}};
   $("#deleteContact").onclick=async()=>{if(!confirm(`確定刪除「${card.displayName}」？圖片也會一併刪除並釋放空間。`))return;const button=$("#deleteContact");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"DELETE"}),{busy:"刪除中…",success:"已刪除"});await cardCollection();}catch(error){alert(error.message)}};
 }
