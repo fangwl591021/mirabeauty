@@ -266,6 +266,9 @@ function fillCalendarEditor(event, { copy = false } = {}) {
   $("#calendarRegistrationEndsAt").value = event ? calendarTimeOnly(event.checkinClosesAt) : "";
   $("#calendarVenueName").value = event?.venueName || "";
   $("#calendarVenueAddress").value = event?.venueAddress || "";
+  $("#calendarCoverUrl").value = event?.coverUrl || "";
+  $("#calendarCoverImage").value = "";
+  $("#calendarCoverStatus").textContent = event?.coverUrl ? "已有活動封面；可重新上傳取代。" : "可上傳圖片；系統會自動壓縮後儲存。";
   $("#calendarMeetingUrl").value = event?.meetingUrl || "";
   // The original value is stored only as a hash, so it cannot be copied back safely.
   $("#calendarCheckinCode").value = "";
@@ -300,6 +303,7 @@ async function saveCalendarEvent() {
     checkinClosesAt: calendarDateTime(date, $("#calendarRegistrationEndsAt").value),
     venueName: $("#calendarVenueName").value.trim(),
     venueAddress: $("#calendarVenueAddress").value.trim(),
+    coverUrl: $("#calendarCoverUrl").value.trim(),
     meetingUrl: $("#calendarMeetingUrl").value.trim(),
     checkinCode: $("#calendarCheckinCode").value.trim(),
     status: "scheduled"
@@ -329,8 +333,33 @@ async function saveCalendarEvent() {
     calendarStatus(message, true);
   }
 }
+async function uploadCalendarCover(input) {
+  const original = input.files?.[0];
+  const urlField = $("#calendarCoverUrl");
+  const status = $("#calendarCoverStatus");
+  if (!original || !urlField) return;
+  try {
+    status.textContent = original.size > 900 * 1024 ? "圖片壓縮中..." : "圖片上傳中...";
+    const file = await optimizeTemplateImage(original);
+    const form = new FormData();
+    form.append("image", file, file.name);
+    status.textContent = `上傳中（${Math.round(original.size / 1024)} KB → ${Math.round(file.size / 1024)} KB）...`;
+    const response = await fetch("/v1/admin/calendar/upload-image", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "活動圖片上傳失敗");
+    urlField.value = data.url;
+    status.textContent = `已上傳：${Math.round(original.size / 1024)} KB → ${Math.round(data.size / 1024)} KB；儲存活動後生效。`;
+  } catch (error) {
+    input.value = "";
+    status.textContent = `上傳失敗：${error.message || "請改用 JPG、PNG 或 WebP 圖片"}`;
+  }
+}
 async function deleteCalendarEvent() { const id = $("#calendarEventId").value; if (!id || !confirm('確定取消此場次？既有報名與簽到紀錄會保留。')) return; try { await api(`/v1/admin/calendar/events/${encodeURIComponent(id)}`, null, 'DELETE'); clearCalendarEditor(); await loadCalendar(); showStatus('場次已取消'); } catch(error) { calendarStatus(error.message, true); } }
-$("#calendarNew")?.addEventListener('click', copyCalendarEvent); $("#calendarRefresh")?.addEventListener('click', loadCalendar); $("#calendarPrev")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()-1, 1); renderCalendarMonth(); }); $("#calendarNext")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()+1, 1); renderCalendarMonth(); }); $("#calendarClose")?.addEventListener('click', clearCalendarEditor); $("#calendarSave")?.addEventListener('click', saveCalendarEvent); $("#calendarDelete")?.addEventListener('click', deleteCalendarEvent);
+$("#calendarNew")?.addEventListener('click', copyCalendarEvent); $("#calendarRefresh")?.addEventListener('click', loadCalendar); $("#calendarCoverImage")?.addEventListener('change', (event) => uploadCalendarCover(event.target)); $("#calendarPrev")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()-1, 1); renderCalendarMonth(); }); $("#calendarNext")?.addEventListener('click', () => { calendarViewDate = new Date(calendarViewDate.getFullYear(), calendarViewDate.getMonth()+1, 1); renderCalendarMonth(); }); $("#calendarClose")?.addEventListener('click', clearCalendarEditor); $("#calendarSave")?.addEventListener('click', saveCalendarEvent); $("#calendarDelete")?.addEventListener('click', deleteCalendarEvent);
 const templateButtons = (value) =>
   String(value || "")
     .split("\n")
