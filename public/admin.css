@@ -479,3 +479,29 @@ body.template-page{background:#f5f7fb;overflow:auto}body.template-page .sidebar,
 .templateDesignerGrid .templatePreviewPane{position:sticky;top:60px;height:calc(100vh - 60px)}
 body.template-drawer-open{overflow:hidden}
 @media(max-width:900px){.templateDesignerGrid{width:min(700px,100vw);grid-template-columns:1fr}.templateDesignerGrid .templatePreviewPane{position:static;height:auto;min-height:500px}.templateDesignerGrid .templateControls{border-right:0}.templateDrawerHead{grid-column:1}}
+
+/* CRM 會員檔案：點數操作及角色權限。 */
+.crm-point-panel{display:grid;grid-template-columns:minmax(150px,.6fr) minmax(360px,1.4fr);align-items:center;gap:20px;margin:16px 0;padding:24px;border:1px solid #e1e7ef;border-radius:14px;background:linear-gradient(145deg,#fff 58%,#fff1f2);text-align:center}
+.crm-point-panel>div:first-child{display:grid;gap:12px}
+.crm-point-panel small{color:#91a0b8;font-size:14px;font-weight:800}
+.crm-point-panel strong{color:#dc2626;font-size:46px;line-height:1}
+.crm-point-panel strong i{color:#91a0b8;font-size:15px;font-style:normal}
+.crm-point-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.crm-point-actions button{min-height:74px;border:1px solid #bce9ca;border-radius:14px;background:#effcf3;color:#0d9d49;font:800 15px inherit;cursor:pointer}
+.crm-point-actions button:nth-child(2){border-color:#ffc8c8;background:#fff4f4;color:#dc2626}
+.crm-point-actions button:nth-child(3){border-color:#cbd5ff;background:#f1f3ff;color:#4f46d8}
+.crm-point-actions button:disabled{opacity:.55;cursor:wait}
+.crm-permission-panel{margin:16px 0;padding:18px;border:1px solid #e1e7ef;border-radius:14px;background:#fff}
+.crm-permission-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.crm-permission-head h3{margin:0 0 5px;color:#172b4d}
+.crm-permission-head p{margin:0;color:#718096;font-size:13px}
+.crm-permission-head .primary{width:auto;white-space:nowrap}
+.crm-permission-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.crm-permission-options>label{display:flex;align-items:flex-start;gap:12px;min-height:104px;padding:16px;border:1px solid #dfe6ef;border-radius:13px;background:#f8fafc;cursor:pointer}
+.crm-permission-options input{width:18px;height:18px;flex:0 0 auto;margin-top:2px;accent-color:#06b653}
+.crm-permission-options span{display:grid;gap:7px}
+.crm-permission-options b{color:#172b4d;font-size:17px}
+.crm-permission-options small{color:#64748b;font-size:13px;line-height:1.55}
+.crm-access-note{margin:10px 0 0;color:#8a6674;font-size:12px;line-height:1.5}
+@media(max-width:950px){.crm-point-panel,.crm-permission-options{grid-template-columns:1fr}.crm-permission-head{align-items:flex-start;flex-direction:column}.crm-point-actions button{min-height:58px}}
+@media(max-width:520px){.crm-point-actions{grid-template-columns:1fr}.crm-permission-head .primary{width:100%}}
