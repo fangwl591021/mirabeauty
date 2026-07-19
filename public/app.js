@@ -475,7 +475,7 @@ async function daily() {
     const bubbleWidths = { nano: "48%", micro: "56%", deca: "64%", hecto: "72%", kilo: "82%", mega: "92%", giga: "100%" };
     const bubbleWidth = bubbleWidths[creative.bubble_size] || bubbleWidths.nano;
     const detailLink = creative.image_link || creative.target_url;
-    const media = `<div class="daily-media-frame" style="aspect-ratio:${esc(ratio)}"><${creative.creative_type === "video" ? "video controls playsinline" : "img"} class="daily-media" ${creative.creative_type === "video" ? "" : `alt="${esc(creative.title || `第 ${index + 1} 頁`)}"`} src="${esc(creative.media_url)}" style="object-fit:${mode}"></${creative.creative_type === "video" ? "video" : "img"}></div>`;
+    const media = `<div class="daily-media-frame" style="aspect-ratio:${esc(ratio)}"><${creative.creative_type === "video" ? "video controls playsinline preload=\"metadata\"" : "img"} class="daily-media" ${creative.creative_type === "video" ? `poster="${esc(creative.preview_url || "")}"` : `alt="${esc(creative.title || `第 ${index + 1} 頁`)}"`} src="${esc(creative.media_url)}" style="object-fit:${mode}"></${creative.creative_type === "video" ? "video" : "img"}></div>`;
     const extraButtons = (creative.buttons || []).filter((button) => button.type === "uri" && button.uri).map((button) => `<a class="btn alt link-btn" target="_blank" rel="noopener" href="${esc(button.uri)}" ${button.color ? `style="background:${esc(button.color)};color:#fff"` : ""}>${esc(button.label)}</a>`).join("");
     const detailButton = detailLink ? `<a class="btn alt detail-button" target="_blank" rel="noopener" href="${esc(detailLink)}">詳細<br>說明</a>` : `<button class="btn alt detail-button" data-detail="${esc(creative.id)}">詳細<br>說明</button>`;
     const watchLabel = completed.has(creative.id) ? "已完成" : "開始<br>觀看";
@@ -534,18 +534,22 @@ async function watchCreative(creative, card) {
       body: JSON.stringify({ creativeId: creative.id, campaignId: state.daily?.campaign?.id || state.dailyCampaignId }),
     });
     const required = Math.max(0, Number(creative.required_watch_seconds) || 0);
-    const started = Date.now();
+    const requiredRatio = creative.creative_type === "video" ? Math.max(0, Math.min(1, Number(creative.required_completion_ratio) || 0)) : 0;
+    let watchedSeconds = 0;
     let settled = false;
     const timer = setInterval(async () => {
       if (settled) return;
-      const seconds = Math.floor((Date.now() - started) / 1000);
       const media = card?.querySelector(".daily-media");
+      const visiblyPlaying = document.visibilityState === "visible" && (creative.creative_type !== "video" || (media && !media.paused && !media.ended));
+      if (visiblyPlaying) watchedSeconds += 1;
+      const seconds = watchedSeconds;
       const ratio =
         creative.creative_type === "video" && media?.duration
           ? Math.min(1, media.currentTime / media.duration)
           : 1;
-      status.textContent = `觀看中 ${Math.min(seconds, required)} / ${required} 秒`;
-      if (seconds < required || document.visibilityState !== "visible") return;
+      const percent = Math.round(ratio * 100);
+      status.textContent = creative.creative_type === "video" ? `觀看中 ${Math.min(seconds, required)} / ${required} 秒，影片 ${percent}% / ${Math.round(requiredRatio*100)}%` : `觀看中 ${Math.min(seconds, required)} / ${required} 秒`;
+      if (seconds < required || ratio < requiredRatio || !visiblyPlaying) return;
       settled = true;
       try {
         const p = await api(`/v1/daily-ad/view-sessions/${s.token}/progress`, {
