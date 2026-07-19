@@ -7,13 +7,13 @@ import {
 } from "./auth.js";
 import {
   createInviteLink,
+  getAdminAccess,
   getMember,
-  isAdminMember,
   newId,
   resolveLineMember,
   updateMemberProfile,
 } from "./member-repository.js";
-import { awardPoints, getWallet } from "./points.js";
+import { adjustPoints, awardPoints, getWallet } from "./points.js";
 import {
   cancelCalendarSession,
   checkInToSession,
@@ -83,12 +83,9 @@ async function currentMember(request, env) {
 
 async function currentAdmin(request, env) {
   const member = await currentMember(request, env);
-  if (
-    !member ||
-    !(await isAdminMember(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS))
-  )
-    return null;
-  return member;
+  if (!member) return null;
+  const adminAccess = await getAdminAccess(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS);
+  return adminAccess.canAccessAdmin ? { ...member, adminAccess } : null;
 }
 
 function randomInviteToken() {
@@ -454,6 +451,7 @@ async function app(request, env) {
         ]);
       return json({
         success: true,
+        access: admin.adminAccess,
         overview: {
           members: Number(members.results[0].count),
           publishedCourses: Number(courses.results[0].count),
@@ -467,12 +465,14 @@ async function app(request, env) {
       const rows = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
           mp.gender, mp.member_number, mp.company_member_number, mp.industry, mp.birthday, mp.address, mp.admin_note, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
-          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number,
+          COALESCE(amp.system_access, 0) AS system_access, COALESCE(amp.operator_access, 0) AS operator_access
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
         LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
         LEFT JOIN referral_relationships rr ON rr.referred_user_id = pu.id AND rr.status = 'active'
         LEFT JOIN member_profiles ref_mp ON ref_mp.platform_user_id = rr.referrer_user_id
+        LEFT JOIN admin_member_permissions amp ON amp.platform_user_id = pu.id
         ORDER BY pu.created_at DESC
         LIMIT 500
       `).all();
@@ -484,12 +484,14 @@ async function app(request, env) {
       const member = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
           mp.gender, mp.member_number, mp.company_member_number, mp.industry, mp.birthday, mp.address, mp.admin_note, mp.profile_completed_at, COALESCE(pa.balance, 0) AS points_balance,
-          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
+          rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number,
+          COALESCE(amp.system_access, 0) AS system_access, COALESCE(amp.operator_access, 0) AS operator_access
         FROM platform_users pu
         LEFT JOIN member_profiles mp ON mp.platform_user_id = pu.id
         LEFT JOIN point_accounts pa ON pa.platform_user_id = pu.id AND pa.program_id = 'program_main'
         LEFT JOIN referral_relationships rr ON rr.referred_user_id = pu.id AND rr.status = 'active'
         LEFT JOIN member_profiles ref_mp ON ref_mp.platform_user_id = rr.referrer_user_id
+        LEFT JOIN admin_member_permissions amp ON amp.platform_user_id = pu.id
         WHERE pu.id = ?
       `).bind(memberId).first();
       if (!member) return json({ success: false, error: "Member not found" }, 404);
@@ -499,7 +501,54 @@ async function app(request, env) {
         env.DB.prepare("SELECT business_date, checked_in_at, status FROM daily_checkins WHERE platform_user_id = ? ORDER BY business_date DESC LIMIT 30").bind(memberId),
         env.DB.prepare("SELECT mp.display_name, mp.member_number, rr.created_at FROM referral_relationships rr LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id WHERE rr.referrer_user_id = ? AND rr.status = 'active' ORDER BY rr.created_at DESC LIMIT 30").bind(memberId),
       ]);
-      return json({ success: true, member, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
+      const targetAccess = await getAdminAccess(env.DB, memberId, env.ADMIN_LINE_SUBJECTS);
+      return json({ success: true, member, access: admin.adminAccess, targetAccess, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
+    }
+    const memberPermissionsMatch = url.pathname.match(/^\/v1\/admin\/members\/([^/]+)\/permissions$/);
+    if (request.method === "PATCH" && memberPermissionsMatch) {
+      if (!admin.adminAccess.canManagePermissions) return json({ success: false, error: "Only the primary administrator can assign permissions" }, 403);
+      const memberId = memberPermissionsMatch[1];
+      const body = (await readJson(request)) || {};
+      const target = await env.DB.prepare("SELECT id FROM platform_users WHERE id = ? AND status = 'active'").bind(memberId).first();
+      if (!target) return json({ success: false, error: "Member not found" }, 404);
+      const systemAccess = body.systemAccess === true ? 1 : 0;
+      const operatorAccess = body.operatorAccess === true ? 1 : 0;
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO admin_member_permissions
+          (platform_user_id, system_access, operator_access, granted_by_user_id)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(platform_user_id) DO UPDATE SET
+            system_access = excluded.system_access,
+            operator_access = excluded.operator_access,
+            granted_by_user_id = excluded.granted_by_user_id,
+            updated_at = CURRENT_TIMESTAMP`)
+          .bind(memberId, systemAccess, operatorAccess, admin.userId),
+        env.DB.prepare("INSERT INTO audit_logs (id, actor_user_id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, 'admin.permissions.updated', ?)")
+          .bind(newId("audit"), admin.userId, memberId, JSON.stringify({ systemAccess: Boolean(systemAccess), operatorAccess: Boolean(operatorAccess) })),
+      ]);
+      return json({ success: true, permissions: { systemAccess: Boolean(systemAccess), operatorAccess: Boolean(operatorAccess) } });
+    }
+    const memberPointsMatch = url.pathname.match(/^\/v1\/admin\/members\/([^/]+)\/points$/);
+    if (request.method === "POST" && memberPointsMatch) {
+      if (!admin.adminAccess.canManagePoints) return json({ success: false, error: "Point management permission required" }, 403);
+      const memberId = memberPointsMatch[1];
+      const body = (await readJson(request)) || {};
+      const target = await env.DB.prepare("SELECT id FROM platform_users WHERE id = ? AND status = 'active'").bind(memberId).first();
+      if (!target) return json({ success: false, error: "Member not found" }, 404);
+      try {
+        const result = await adjustPoints(env.DB, {
+          userId: memberId,
+          actorUserId: admin.userId,
+          action: String(body.action || ""),
+          points: body.points,
+          note: body.note,
+          requestId: body.requestId,
+        });
+        return json({ success: true, ...result });
+      } catch (error) {
+        const message = error.message === "Insufficient point balance" ? "扣除點數不可超過目前餘額" : error.message;
+        return badRequest(message || "Unable to adjust points");
+      }
     }
     if (request.method === "PATCH" && memberDetailMatch) {
       const memberId = memberDetailMatch[1];
