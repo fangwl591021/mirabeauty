@@ -105,15 +105,63 @@ function normalizeTemplateImageUrl(value) {
   );
 }
 
+function courseCheckinCompactLiffHtml(env, origin) {
+  const liffId = String(env.CHECKIN_LIFF_ID || "");
+  const apiOrigin = String(origin || "");
+  return new Response(\`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>課程報到</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root{--ink:#2d1d22;--muted:#8f7a82;--rose:#b96072;--soft:#f9edf0;--ok:#0c9f57}
+    *{box-sizing:border-box}html,body{min-height:100%;margin:0;background:#fff;color:var(--ink);font-family:"Noto Sans TC",system-ui,sans-serif}
+    body{display:grid;place-items:center;padding:24px;padding-top:calc(24px + env(safe-area-inset-top));padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+    main{width:min(300px,100%);text-align:center}.spinner{width:34px;height:34px;margin:0 auto 18px;border:4px solid #f5dfe5;border-top-color:var(--rose);border-radius:50%;animation:spin .8s linear infinite}.mark{display:none;width:64px;height:64px;margin:0 auto 18px;border-radius:20px;background:var(--soft);color:var(--rose);place-items:center;font-size:30px;font-weight:900}.mark.show{display:grid}.success .mark{background:#e8f8ef;color:var(--ok)}h1{margin:0;font-size:22px;line-height:1.35}p{margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.65}.error h1{color:var(--rose)}@keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body><main id="app"><div id="spinner" class="spinner"></div><div id="mark" class="mark">✓</div><h1 id="title">正在確認課程報到</h1><p id="message">核對會員資格、報名紀錄與報到時間…</p></main>
+<script>
+  const LIFF_ID=${JSON.stringify(liffId)};
+  const API_ORIGIN=${JSON.stringify(apiOrigin)};
+  const title=document.querySelector("#title"), message=document.querySelector("#message"), spinner=document.querySelector("#spinner"), mark=document.querySelector("#mark"), app=document.querySelector("#app");
+  const show=(heading,detail,type="")=>{title.textContent=heading;message.textContent=detail||"";spinner.style.display="none";mark.classList.add("show");app.className=type;};
+  const close=()=>setTimeout(()=>{try{if(liff.isInClient())liff.closeWindow();else window.close();}catch(_){window.close();}},2400);
+  (async()=>{
+    try{
+      await liff.init({liffId:LIFF_ID});
+      if(!liff.isInClient())throw new Error("請從 LINE 開啟課程報到 QR Code");
+      if(!liff.isLoggedIn()){liff.login({redirectUri:location.href});return;}
+      const profile=await liff.getProfile().catch(()=>null);
+      const auth=await fetch(API_ORIGIN+"/v1/auth/line/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken:liff.getIDToken(),accessToken:liff.getAccessToken()||"",pictureUrl:profile?.pictureUrl||"",displayName:profile?.displayName||""})});
+      const identity=await auth.json().catch(()=>({}));
+      if(!auth.ok||!identity.sessionToken)throw new Error(identity.error||"LINE 身份驗證失敗");
+      const checkin=await fetch(API_ORIGIN+"/v1/course-sessions/smart-check-in",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+identity.sessionToken},body:"{}"});
+      const result=await checkin.json().catch(()=>({}));
+      if(!checkin.ok)throw new Error(({no_active_session:"目前沒有可報到的活動，請確認時間。",registration_required:"尚未報名本場活動，無法報到。",session_unavailable:"此活動目前無法報到。"}[result.error])||result.error||"報到失敗");
+      show(result.duplicate?"本課程已完成報到":"課程報到成功",result.duplicate?"你已完成本場簽到。":"已核對報名與報到時間，簽到點數將依規則入帳。","success");close();
+    }catch(error){show("暫時無法完成報到",error.message||"請稍後再試","error");close();}
+  })();
+</script></body></html>\`,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
+}
+
 async function app(request, env) {
   const url = new URL(request.url);
   const publicCardPath = url.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
   if (request.method === "GET" && publicCardPath) {
     return Response.redirect(`${url.origin}/?publicCard=${encodeURIComponent(publicCardPath[1])}`, 302);
   }
-  if (request.method === "GET" && url.pathname === "/r/checkin") {
-    const target = env.LIFF_ID
-      ? `https://liff.line.me/${env.LIFF_ID}?smartCheckin=1`
+  if (request.method === "GET" && (url.pathname === "/r/checkin" || url.pathname === "/r/course-checkin")) {
+    // Same two-step Compact LIFF pattern as MLM:
+    // QR -> LIFF -> this endpoint with liff.state -> compact verification screen.
+    if (env.CHECKIN_LIFF_ID && url.searchParams.has("liff.state")) {
+      return courseCheckinCompactLiffHtml(env, url.origin);
+    }
+    const liffId = env.CHECKIN_LIFF_ID || env.LIFF_ID;
+    const target = liffId
+      ? `https://liff.line.me/${encodeURIComponent(liffId)}?smartCheckin=1`
       : `${url.origin}/?smartCheckin=1`;
     return Response.redirect(target, 302);
   }
@@ -152,6 +200,7 @@ async function app(request, env) {
     return json({
       success: true,
       liffId: env.LIFF_ID || "",
+      checkinLiffId: env.CHECKIN_LIFF_ID || "",
       officialAccountUrl: "https://lin.ee/sV9xDLr",
     });
   }
