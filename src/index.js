@@ -177,7 +177,8 @@ async function app(request, env) {
     // liff.line.me，否則會在 LIFF 與登入頁之間無限循環。
     if (
       env.CHECKIN_LIFF_ID &&
-      (url.searchParams.has("liff.state") ||
+      (url.searchParams.get("smartCheckin") === "1" ||
+        url.searchParams.has("liff.state") ||
         (url.searchParams.has("code") && url.searchParams.has("state")))
     ) {
       return courseCheckinCompactLiffHtml(env, url.origin);
