@@ -1104,10 +1104,12 @@ async function profile(required = false) {
     ? `${ref.displayName || "會員"}${ref.memberNumber ? `（${ref.memberNumber}）` : ""}`
     : "無系統推薦人";
   layout(
-    `<div class="card profile-card">${avatar()}<h2>${required ? "完成會員註冊" : "會員資料"}</h2><p class="muted">LINE 頭貼與名稱已自動帶入。請填寫直銷公司的會員編號；系統會員編號與系統推薦人不可自行修改。</p><label>姓名</label><input id="name" value="${esc(state.member.displayName)}" required><label>性別</label><select id="gender"><option value="">請選擇</option><option value="female" ${state.member.gender === "female" ? "selected" : ""}>女性</option><option value="male" ${state.member.gender === "male" ? "selected" : ""}>男性</option><option value="other" ${state.member.gender === "other" ? "selected" : ""}>其他</option><option value="prefer_not_to_say" ${state.member.gender === "prefer_not_to_say" ? "selected" : ""}>不透露</option></select><label>公司會員編號</label><input id="companyMemberNumber" value="${esc(state.member.companyMemberNumber)}" placeholder="請輸入直銷公司會員編號" required><label>系統會員編號</label><input value="${esc(state.member.memberNumber)}" readonly><label>系統推薦人</label><input value="${esc(refText)}" readonly><label>手機（選填）</label><input id="phone" value="${esc(state.member.phone)}"><button class="btn" id="save">${required ? "完成註冊" : "儲存"}</button>${required ? "" : `<button class="btn alt" id="logout">登出</button>`}</div>`,
+    `<div class="card profile-card">${avatar()}<h2>${required ? "完成會員註冊" : "會員資料"}</h2><p class="muted">LINE 頭貼與名稱已自動帶入。請填寫直銷公司的會員編號；系統會員編號與系統推薦人不可自行修改。</p><label>姓名</label><input id="name" value="${esc(state.member.displayName)}" required><label>性別</label><select id="gender" required><option value="">請選擇</option><option value="female" ${state.member.gender === "female" ? "selected" : ""}>女性</option><option value="male" ${state.member.gender === "male" ? "selected" : ""}>男性</option><option value="other" ${state.member.gender === "other" ? "selected" : ""}>其他</option><option value="prefer_not_to_say" ${state.member.gender === "prefer_not_to_say" ? "selected" : ""}>不透露</option></select><label>生日</label><input id="birthday" type="date" value="${esc(state.member.birthday)}" max="${new Date().toISOString().slice(0,10)}" required><label>公司會員編號</label><input id="companyMemberNumber" value="${esc(state.member.companyMemberNumber)}" placeholder="請輸入直銷公司會員編號" required><label>系統會員編號</label><input value="${esc(state.member.memberNumber)}" readonly><label>系統推薦人</label><input value="${esc(refText)}" readonly><label>手機（選填）</label><input id="phone" value="${esc(state.member.phone)}"><button class="btn" id="save">${required ? "完成註冊" : "儲存"}</button>${required ? "" : `<button class="btn alt" id="logout">登出</button>`}</div>`,
   );
   $("#save").onclick = async () => {
     const button = $("#save");
+    if (!$("#gender").value) return alert("請選擇性別");
+    if (!$("#birthday").value) return alert("請選擇生日");
     try {
       state.member = (
         await withActionFeedback(button, () => api("/v1/me", {
@@ -1116,6 +1118,7 @@ async function profile(required = false) {
             displayName: $("#name").value,
             phone: $("#phone").value,
             gender: $("#gender").value,
+            birthday: $("#birthday").value,
             companyMemberNumber: $("#companyMemberNumber").value,
           }),
         }), { busy: required ? "註冊處理中…" : "儲存中…", success: required ? "註冊完成" : "已儲存" })
