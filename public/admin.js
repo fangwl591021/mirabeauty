@@ -142,7 +142,8 @@ async function testRichMenuToken(button) {
   try {
     await withButtonFeedback(button, async () => {
       const result = await api("/v1/admin/rich-menu/token/test", {});
-      renderRichMenuTokenStatus({ configured: true, bot: result.bot });
+      const status = await api("/v1/admin/rich-menu/token");
+      renderRichMenuTokenStatus({ ...status, bot: result.bot });
       showStatus(`LINE 連線正常${result.bot?.displayName ? `：${result.bot.displayName}` : ""}`);
     }, { busy: "測試連線中…", success: "連線正常" });
   } catch (error) {
