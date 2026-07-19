@@ -123,7 +123,7 @@ if (courseSessionFromLocation()) sessionStorage.setItem("mirabeauty_course_sessi
 if (smartCheckinFromLocation()) sessionStorage.setItem("mirabeauty_smart_checkin", "1");
 if (cardShareIdFromLocation()) sessionStorage.setItem("mirabeauty_card_share_id", state.cardShareId);
 if (cardShareModeFromLocation()) sessionStorage.setItem("mirabeauty_card_share_mode", "1");
-const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
+const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", referral_attendance_reward:"所屬會員完成獎勵", task_completed:"完成任務" };
 const FIXED_CARD_IMAGE_LINK = "https://lin.ee/ngaHmLM";
 const DEFAULT_CARD_CHAT_ALT_TEXT = "美妝新世代、從米拉開始";
 const cardChatAltText = (card) => String(card?.chatAltText || DEFAULT_CARD_CHAT_ALT_TEXT).trim().slice(0, 300) || DEFAULT_CARD_CHAT_ALT_TEXT;
@@ -359,18 +359,28 @@ async function wallet() {
   const r = await api("/v1/points/wallet");
   const entries = r.wallet.entries || [];
   const referrals = r.referrals || [];
-  const entryRows = entries.length
-    ? entries.map((x) => {
+  const regularEntries = entries.filter((x) => x.event_type !== "referral_attendance_reward");
+  const rewardGroups = Object.values(entries.filter((x) => x.event_type === "referral_attendance_reward").reduce((groups, entry) => {
+    const key = `${entry.business_date || String(entry.created_at || "").slice(0, 10)}:${entry.event_reference}`;
+    if (!groups[key]) groups[key] = { date: entry.business_date || String(entry.created_at || "").slice(0, 10), title: entry.activity_title || "課程／任務", points: 0, entries: [] };
+    groups[key].points += Number(entry.delta || 0);
+    groups[key].entries.push(entry);
+    return groups;
+  }, {}));
+  const regularRows = regularEntries.map((x) => {
         const delta = Number(x.delta || 0);
         return `<div class="item wallet-entry"><div><b>${esc(pointEventLabel[x.event_type] || x.event_type)}</b><span class="muted">${esc(x.created_at)}</span></div><b class="wallet-delta ${delta < 0 ? "negative" : ""}">${delta > 0 ? "+" : ""}${delta}</b></div>`;
-      }).join("")
+      }).join("");
+  const rewardRows = rewardGroups.map((group) => `<details class="wallet-reward-group"><summary><div><b>所屬會員完成獎勵｜${esc(group.title)}</b><span class="muted">${esc(group.date)}｜${group.entries.length} 人</span></div><b class="wallet-delta">+${group.points}</b></summary><div class="wallet-reward-members">${group.entries.map((entry) => `<div><span>${esc(entry.referred_display_name || "受邀會員")}</span><small>${esc(entry.created_at)}｜+${Number(entry.delta || 0)}</small></div>`).join("")}</div></details>`).join("");
+  const entryRows = entries.length
+    ? rewardRows + regularRows
     : '<p class="muted wallet-empty">尚無點數紀錄</p>';
   const referralRows = referrals.length
     ? referrals.map((x) => `<div class="item wallet-referral"><div><b>${esc(x.display_name || "新會員")}</b><span class="muted">會員編號：${esc(x.member_number || "尚未完成註冊")}</span></div><span class="muted">${esc(x.created_at)}</span></div>`).join("")
     : '<p class="muted wallet-empty">尚無邀約成功紀錄</p>';
   layout(
     `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div>
-    <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${entries.length} 筆 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
+    <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${regularEntries.length + rewardGroups.length} 組 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
     <details class="card wallet-disclosure"><summary><span>分享成果清單</span><span class="wallet-summary-meta">共 ${referrals.length} 人 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${referralRows}</div></details>`,
   );
   $("#walletQr").onclick = () => showWalletQr("qr", "expire");
