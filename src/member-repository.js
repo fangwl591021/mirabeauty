@@ -128,12 +128,35 @@ export async function updateMemberProfile(db, userId, profile) {
   return getMember(db, userId);
 }
 
-export async function isAdminMember(db, userId, configuredSubjects) {
+export async function getAdminAccess(db, userId, configuredSubjects) {
   const allowed = new Set(String(configuredSubjects || '').split(',').map(value => value.trim()).filter(Boolean));
-  if (!allowed.size) return false;
   const identity = await db.prepare(`SELECT provider_subject FROM external_identities WHERE platform_user_id = ? AND provider = 'line_login' AND verification_status = 'verified'`)
     .bind(userId).first();
-  return Boolean(identity?.provider_subject && allowed.has(identity.provider_subject));
+  const owner = Boolean(identity?.provider_subject && allowed.has(identity.provider_subject));
+  if (owner) return {
+    canAccessAdmin: true,
+    canManagePermissions: true,
+    canManagePoints: true,
+    systemAccess: true,
+    operatorAccess: false,
+    role: 'owner'
+  };
+  const permission = await db.prepare(`SELECT system_access, operator_access FROM admin_member_permissions WHERE platform_user_id = ?`)
+    .bind(userId).first();
+  const systemAccess = Number(permission?.system_access || 0) === 1;
+  const operatorAccess = Number(permission?.operator_access || 0) === 1;
+  return {
+    canAccessAdmin: systemAccess || operatorAccess,
+    canManagePermissions: false,
+    canManagePoints: systemAccess,
+    systemAccess,
+    operatorAccess,
+    role: systemAccess ? 'system' : operatorAccess ? 'operator' : 'member'
+  };
+}
+
+export async function isAdminMember(db, userId, configuredSubjects) {
+  return (await getAdminAccess(db, userId, configuredSubjects)).canAccessAdmin;
 }
 
 export async function createInviteLink(db, userId, rawToken) {
