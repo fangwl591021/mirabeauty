@@ -464,3 +464,18 @@ body.template-page{background:#f5f7fb;overflow:auto}body.template-page .sidebar,
 .checkinDirectoryActions .templateDirDelete:disabled{opacity:.45;cursor:not-allowed}
 .templateDirDraft{color:#9a6b1c;font-size:12px;font-weight:800}
 @media(max-width:650px){.checkinDirectoryHead{flex-direction:column}.checkinDirectoryHead .importButton{width:100%}}
+
+
+/* 簽到活動：CRM 目錄 + 右側滑出編輯器 */
+.templateDesigner{position:relative;overflow:visible;padding:18px;background:#fff}
+.templateDesigner>.checkinDirectoryPanel{margin:0}
+.templateDrawerBackdrop{position:fixed;inset:0;z-index:90;background:rgba(15,23,42,.34);opacity:0;visibility:hidden;transition:opacity .24s ease,visibility .24s ease}
+.templateDesignerGrid{position:fixed;z-index:91;top:0;right:0;bottom:0;width:min(1180px,94vw);display:grid;grid-template-columns:minmax(440px,51%) minmax(420px,49%);min-height:100vh;overflow-y:auto;background:#fff;box-shadow:-16px 0 38px rgba(15,23,42,.2);transform:translateX(104%);visibility:hidden;transition:transform .28s ease,visibility .28s ease}
+.templateDesigner.editor-open .templateDrawerBackdrop{opacity:1;visibility:visible}
+.templateDesigner.editor-open .templateDesignerGrid{transform:translateX(0);visibility:visible}
+.templateDrawerHead{position:sticky;top:0;z-index:4;grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;height:60px;padding:0 20px;border-bottom:1px solid #e6ebf2;background:#fff;color:#17365d;font-size:18px}
+.templateDrawerHead button{width:34px;height:34px;border:1px solid #d6dfeb;border-radius:8px;background:#fff;color:#536177;font-size:25px;line-height:1;cursor:pointer}
+.templateDesignerGrid .templateControls{min-height:calc(100vh - 60px);padding:18px;border-right:1px solid #edf1f5}
+.templateDesignerGrid .templatePreviewPane{position:sticky;top:60px;height:calc(100vh - 60px)}
+body.template-drawer-open{overflow:hidden}
+@media(max-width:900px){.templateDesignerGrid{width:min(700px,100vw);grid-template-columns:1fr}.templateDesignerGrid .templatePreviewPane{position:static;height:auto;min-height:500px}.templateDesignerGrid .templateControls{border-right:0}.templateDrawerHead{grid-column:1}}
