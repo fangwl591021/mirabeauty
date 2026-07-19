@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MiraBeauty 營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260719-7" />
+    <link rel="stylesheet" href="/admin.css?v=20260719-8" />
   </head>
   <body>
     <div class="shell">
@@ -278,7 +278,7 @@
                     <label class="templateSwitch"><input id="templateActive" type="checkbox" checked /> 啟用輪播活動</label>
                   </div>
                 </div>
-                <section class="checkinDirectoryPanel" aria-label="簽到贈點活動目錄"><div class="checkinDirectoryHead"><div><h3>簽到贈點活動目錄</h3><p>以檔案目錄方式管理；可搜尋、分頁、編輯、改名與刪除。</p></div><button id="templateNewGroup" class="importButton" type="button">新增標籤活動</button></div><div class="checkinDirectoryToolbar"><input id="templateDirectorySearch" type="search" placeholder="搜尋標籤名稱…" autocomplete="off" /><span id="templateDirectoryCount"></span></div><div class="checkinDirectoryTableWrap"><table class="checkinDirectoryTable"><thead><tr><th>標籤名稱</th><th>活動狀態</th><th>輪播頁數</th><th>建立時間</th><th>操作</th></tr></thead><tbody id="templateGroupDirectory"></tbody></table></div><div class="checkinDirectoryPager"><button id="templateDirectoryPrev" type="button" class="secondaryButton">上一頁</button><span id="templateDirectoryPage"></span><button id="templateDirectoryNext" type="button" class="secondaryButton">下一頁</button></div></section><div class="templateBlock"><div class="templateBlockHead"><strong>頁面設定</strong><div><span id="templateInlineStatus"></span><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div></div><p class="template-compress-note">上傳圖片會自動壓縮為 WebP，目標 900 KB 以下。</p><div id="templatePages" class="templatePages"></div></div>
+                <section class="checkinDirectoryPanel" aria-label="簽到贈點活動目錄"><div class="checkinDirectoryHead"><div><h3>簽到贈點活動目錄</h3><p>以檔案目錄方式管理；可搜尋、分頁、編輯、改名與刪除。</p></div><button id="templateNewGroup" class="importButton" type="button">新增標籤活動</button></div><div class="checkinDirectoryToolbar"><input id="templateDirectorySearch" type="search" placeholder="搜尋標籤名稱…" autocomplete="off" /><span id="templateDirectoryCount"></span></div><div class="checkinDirectoryTableWrap"><table class="checkinDirectoryTable"><thead><tr><th>標籤名稱</th><th>活動狀態</th><th>輪播頁數</th><th>建立時間</th><th>操作</th></tr></thead><tbody id="templateGroupDirectory"></tbody></table></div><div class="checkinDirectoryPager"><button id="templateDirectoryPrev" type="button" class="secondaryButton">上一頁</button><span id="templateDirectoryPage"></span><button id="templateDirectoryNext" type="button" class="secondaryButton">下一頁</button></div></section><div class="templateBlock"><div class="templateBlockHead"><strong>頁面設定</strong><div><span id="templateInlineStatus"></span><button id="openVideoLibrary" class="secondaryButton" type="button">影片庫</button><button id="templateAddPage" class="secondaryButton" type="button">新增頁面</button><button id="templateSave" class="importButton" type="button">儲存模板</button></div></div><p class="template-compress-note">圖片會自動壓縮為 WebP；影片由 R2 影片庫導入，未被活動使用時會自動清除。</p><div id="templatePages" class="templatePages"></div></div>
                 <div id="templateStatus" class="templateStatus"></div>
               </div>
               <aside class="templatePreviewPane"><div class="templateBlockHead"><strong>即時預覽</strong><span>400 x 600，多頁左右排列</span></div><div id="templateVisualPreview" class="templateVisualPreview"></div><details class="templateJsonFold"><summary>JSON 預覽</summary><pre id="templatePreview" class="templatePreview"></pre></details></aside>
@@ -324,7 +324,15 @@
         </section>
       </main>
     </div>
+    <div id="videoLibraryModal" class="video-library-modal" hidden>
+      <div class="video-library-backdrop" data-close-video-library></div>
+      <section class="video-library-sheet" role="dialog" aria-modal="true" aria-labelledby="videoLibraryTitle">
+        <header><div><h2 id="videoLibraryTitle">影片庫</h2><p>上傳一次即可導入多個活動；沒有任何活動使用的影片會自動刪除。</p></div><button type="button" data-close-video-library aria-label="關閉">×</button></header>
+        <div class="video-library-upload"><label>上傳 MP4（80MB 內）<input id="videoLibraryFile" type="file" accept="video/mp4,.mp4" /></label><button id="uploadVideoLibrary" class="primary" type="button">上傳影片</button><div class="video-upload-progress"><i id="videoUploadProgressBar"></i></div><span id="videoUploadStatus"></span></div>
+        <div id="videoLibraryList" class="video-library-list"></div>
+      </section>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260719-7"></script>
+    <script type="module" src="/admin.js?v=20260719-8"></script>
   </body>
 </html>
