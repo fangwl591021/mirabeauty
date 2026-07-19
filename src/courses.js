@@ -82,6 +82,7 @@ export async function saveCalendarSession(db, body) {
   const endsAt = String(body.endsAt || '').trim();
   const checkinOpensAt = String(body.checkinOpensAt || '').trim();
   const checkinClosesAt = String(body.checkinClosesAt || '').trim();
+  const coverUrl = String(body.coverUrl || '').trim().slice(0, 4096);
   if (!title) return { ok: false, reason: 'calendar_title_required' };
   if (!['physical', 'online'].includes(mode) || !startsAt || !endsAt || !checkinOpensAt || !checkinClosesAt) {
     return { ok: false, reason: 'missing_calendar_fields' };
@@ -95,11 +96,15 @@ export async function saveCalendarSession(db, body) {
     courseId = `calendar_course_${id}`;
     await db.prepare(`
       INSERT OR IGNORE INTO courses (id, title, description, cover_url, status, created_by_user_id)
-      VALUES (?, ?, ?, '', 'published', NULL)
-    `).bind(courseId, title, '由行事曆活動自動建立').run();
+      VALUES (?, ?, ?, ?, 'published', NULL)
+    `).bind(courseId, title, '由行事曆活動自動建立', coverUrl).run();
   }
   const course = await db.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
   if (!course) return { ok: false, reason: 'course_not_found' };
+  // 空白時保留既有封面，避免編輯場次時誤清除圖片。
+  if (coverUrl) {
+    await db.prepare('UPDATE courses SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(coverUrl, courseId).run();
+  }
 
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
