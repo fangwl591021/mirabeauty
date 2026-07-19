@@ -272,7 +272,6 @@ $("#courseForm").addEventListener("submit", (event) =>
 // intact, while MiraBeauty uses the existing course_sessions table so points,
 // CRM and attendance stay on the same record.
 let calendarEvents = [];
-let calendarCourses = [];
 let calendarViewDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 const calendarPad = (value) => String(value).padStart(2, "0");
 const calendarDateOnly = (value) => { const d = new Date(value); return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${calendarPad(d.getMonth()+1)}-${calendarPad(d.getDate())}`; };
@@ -290,7 +289,6 @@ function renderFixedCheckinQr() {
   $("#calendarTestQr").href = url;
   $("#calendarCopyQr").onclick = async () => { await navigator.clipboard.writeText(url); showStatus("固定報到連結已複製"); };
 }
-function renderCalendarCourses() { const select = $("#calendarCourseId"); if (!select) return; select.innerHTML = `<option value="">不連結既有課程（活動會自動建立）</option>${calendarCourses.map(c => `<option value="${esc(c.id)}">${esc(c.title)}（${c.status === "published" ? "公開" : "草稿"}）</option>`).join("")}`; }
 function renderCalendarMonth() {
   const year = calendarViewDate.getFullYear(), month = calendarViewDate.getMonth();
   $("#calendarMonthTitle").textContent = `${year} 年 ${month + 1} 月`;
@@ -306,14 +304,13 @@ function renderCalendarMonth() {
   $("#calendarMonth").innerHTML = cells.join("");
   document.querySelectorAll("[data-calendar-edit]").forEach(button => button.onclick = () => openCalendarEditor(button.dataset.calendarEdit));
 }
-function renderCalendarList() { const node = $("#calendarList"); node.innerHTML = calendarEvents.length ? calendarEvents.map(event => `<article class="calendar-list-item"><div><strong>${esc(event.title || event.courseTitle)}</strong><p>${esc(event.courseTitle)}｜${esc(calendarRange(event))}</p><small>${event.mode === "physical" ? esc(event.venueName || event.venueAddress || "現場") : "線上"}｜報名／簽到 ${esc(calendarTimeOnly(event.checkinOpensAt))}–${esc(calendarTimeOnly(event.checkinClosesAt))}</small></div><div><button class="outline" data-calendar-edit="${esc(event.sessionId)}">編輯</button></div></article>`).join("") : '<p class="muted">目前沒有行事曆活動。請新增場次。</p>'; document.querySelectorAll("[data-calendar-edit]").forEach(button => button.onclick = () => openCalendarEditor(button.dataset.calendarEdit)); }
-async function loadCalendar() { try { const [courses, events] = await Promise.all([api('/v1/admin/courses'), api('/v1/admin/calendar/events')]); calendarCourses = courses.courses || []; calendarEvents = events.events || []; renderFixedCheckinQr(); renderCalendarCourses(); renderCalendarMonth(); renderCalendarList(); } catch (error) { showStatus(error.message, 'error'); } }
+function renderCalendarList() { const node = $("#calendarList"); node.innerHTML = calendarEvents.length ? calendarEvents.map(event => `<article class="calendar-list-item"><div><strong>${esc(event.title || event.courseTitle)}</strong><p>${esc(calendarRange(event))}</p><small>${event.mode === "physical" ? esc(event.venueName || event.venueAddress || "現場") : "線上"}｜報名／簽到 ${esc(calendarTimeOnly(event.checkinOpensAt))}–${esc(calendarTimeOnly(event.checkinClosesAt))}</small></div><div><button class="outline" data-calendar-edit="${esc(event.sessionId)}">編輯</button></div></article>`).join("") : '<p class="muted">目前沒有行事曆活動。請新增場次。</p>'; document.querySelectorAll("[data-calendar-edit]").forEach(button => button.onclick = () => openCalendarEditor(button.dataset.calendarEdit)); }
+async function loadCalendar() { try { const data = await api('/v1/admin/calendar/events'); calendarEvents = data.events || []; renderFixedCheckinQr(); renderCalendarMonth(); renderCalendarList(); } catch (error) { showStatus(error.message, 'error'); } }
 function clearCalendarEditor() { $("#calendarEditor").hidden = true; $("#calendarEventId").value = ""; calendarStatus(""); }
 function fillCalendarEditor(event, { copy = false } = {}) {
   $("#calendarEditor").hidden = false;
   $("#calendarEditorTitle").textContent = copy ? "複製活動" : event ? "編輯活動" : "新增活動";
   $("#calendarEventId").value = copy ? "" : event?.sessionId || "";
-  $("#calendarCourseId").value = event?.courseId || "";
   $("#calendarSessionTitle").value = event?.title || "";
   $("#calendarMode").value = event?.mode || "physical";
   $("#calendarEventDate").value = event ? calendarDateOnly(event.startsAt) : "";
@@ -351,7 +348,6 @@ async function saveCalendarEvent() {
   const date = $("#calendarEventDate").value;
   const payload = {
     id: $("#calendarEventId").value,
-    courseId: $("#calendarCourseId").value,
     title: $("#calendarSessionTitle").value.trim(),
     mode: $("#calendarMode").value,
     startsAt: calendarDateTime(date, $("#calendarStartsAt").value),
@@ -379,7 +375,7 @@ async function saveCalendarEvent() {
   try {
     await withButtonFeedback(button, async () => {
       const result = await api('/v1/admin/calendar/events', payload);
-      calendarStatus("已儲存。未選擇既有課程時，系統已自動建立同名活動並連動報名、簽到與點數。");
+      calendarStatus("已儲存。系統已同步活動資料、會員報名、簽到與點數。");
       await loadCalendar();
       openCalendarEditor(result.id);
     }, { busy:"儲存中…", success:"已儲存" });
