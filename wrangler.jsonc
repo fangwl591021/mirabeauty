@@ -20,5 +20,11 @@
       "database_id": "ba4aa1c1-c006-4a52-9df7-1b46ec100c27",
       "migrations_dir": "migrations"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "mirabeauty-media"
+    }
   ]
 }
