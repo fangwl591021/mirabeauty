@@ -1,6 +1,6 @@
 import { sha256 } from './auth.js';
 import { newId } from './member-repository.js';
-import { awardPoints } from './points.js';
+import { awardPoints, awardReferralAttendancePoints } from './points.js';
 
 function isWithinWindow(now, opensAt, closesAt) {
   const opens = Date.parse(opensAt);
@@ -211,7 +211,12 @@ export async function checkInToSession(db, { userId, sessionId, method, code, sm
     idempotencyKey: `attendance_verified:${sessionId}:${userId}`,
     metadata: { attendanceId, method: normalizedMethod }
   });
-  return { ok: true, duplicate: false, attendanceId, pointResult };
+  const referrerPointResult = await awardReferralAttendancePoints(db, {
+    referredUserId: userId,
+    sessionId,
+    attendanceId,
+  });
+  return { ok: true, duplicate: false, attendanceId, pointResult, referrerPointResult };
 }
 
 export async function smartCheckInToActiveSession(db, { userId }) {
