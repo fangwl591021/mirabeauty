@@ -13,7 +13,7 @@ function publicSession(row) {
     courseId: row.course_id,
     courseTitle: row.course_title,
     courseDescription: row.course_description,
-    coverUrl: row.cover_url,
+    coverUrl: row.session_cover_url || row.cover_url,
     title: row.session_title,
     mode: row.attendance_mode,
     startsAt: row.starts_at,
@@ -30,7 +30,7 @@ function publicSession(row) {
 
 export async function listPublicCourseSessions(db) {
   const result = await db.prepare(`
-    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url, cs.cover_url AS session_cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
       cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
@@ -50,7 +50,7 @@ export async function listCalendarSessions(db, { from = '', to = '' } = {}) {
   if (to) { clauses.push('cs.starts_at < ?'); values.push(to); }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const result = await db.prepare(`
-    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+    SELECT cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url, cs.cover_url AS session_cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
       cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at, cs.status AS session_status, c.status AS course_status
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
@@ -96,27 +96,22 @@ export async function saveCalendarSession(db, body) {
     courseId = `calendar_course_${id}`;
     await db.prepare(`
       INSERT OR IGNORE INTO courses (id, title, description, cover_url, status, created_by_user_id)
-      VALUES (?, ?, ?, ?, 'published', NULL)
-    `).bind(courseId, title, '由行事曆活動自動建立', coverUrl).run();
+      VALUES (?, ?, ?, '', 'published', NULL)
+    `).bind(courseId, title, '由行事曆活動自動建立').run();
   }
   const course = await db.prepare('SELECT id FROM courses WHERE id = ?').bind(courseId).first();
   if (!course) return { ok: false, reason: 'course_not_found' };
-  // 空白時保留既有封面，避免編輯場次時誤清除圖片。
-  if (coverUrl) {
-    await db.prepare('UPDATE courses SET cover_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(coverUrl, courseId).run();
-  }
-
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
   if (existing) {
     const codeSql = body.checkinCode ? ', checkin_code_hash = ?' : '';
-    const binds = [courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt];
+    const binds = [courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, coverUrl];
     if (body.checkinCode) binds.push(codeHash);
     binds.push(String(body.status || 'scheduled'), id);
-    await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, checkin_opens_at = ?, checkin_closes_at = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
+    await db.prepare(`UPDATE course_sessions SET course_id = ?, title = ?, attendance_mode = ?, starts_at = ?, ends_at = ?, venue_name = ?, venue_address = ?, meeting_url = ?, checkin_opens_at = ?, checkin_closes_at = ?, cover_url = ?${codeSql}, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(...binds).run();
   } else {
-    await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, checkin_opens_at, checkin_closes_at, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, codeHash, String(body.status || 'scheduled')).run();
+    await db.prepare(`INSERT INTO course_sessions (id, course_id, title, attendance_mode, starts_at, ends_at, venue_name, venue_address, meeting_url, checkin_opens_at, checkin_closes_at, cover_url, checkin_code_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, courseId, title, mode, startsAt, endsAt, String(body.venueName || ''), String(body.venueAddress || ''), String(body.meetingUrl || ''), checkinOpensAt, checkinClosesAt, coverUrl, codeHash, String(body.status || 'scheduled')).run();
   }
   return { ok: true, id };
 }
@@ -129,7 +124,7 @@ export async function cancelCalendarSession(db, sessionId) {
 export async function listMyCourseSessions(db, userId) {
   const result = await db.prepare(`
     SELECT cr.status AS registration_status, cr.registered_at, ar.status AS attendance_status, ar.checked_in_at AS attendance_at,
-      cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url,
+      cs.id AS session_id, cs.course_id, c.title AS course_title, c.description AS course_description, c.cover_url, cs.cover_url AS session_cover_url,
       cs.title AS session_title, cs.attendance_mode, cs.starts_at, cs.ends_at, cs.venue_name, cs.venue_address,
       cs.meeting_url, cs.checkin_opens_at, cs.checkin_closes_at
     FROM course_registrations cr
