@@ -670,6 +670,50 @@ function cardFlex(card) {
     },
   };
 }
+function collectedCardFlex(card, shareUrl, hasImage = false) {
+  const clean = (value, max = 300) => String(value || "").trim().slice(0, max);
+  const validWebUrl = (value) => /^https:\/\//i.test(clean(value, 2048)) ? clean(value, 2048) : "";
+  const button = (label, uri, color = "#B96072") => ({
+    type:"button", style:"primary", height:"sm", color,
+    action:{ type:"uri", label:String(label).slice(0,20), uri },
+  });
+  const displayName = clean(card.displayName, 80) || "未命名名片";
+  const position = [clean(card.jobTitle, 80), clean(card.department, 80)].filter(Boolean).join("｜");
+  const contactLines = [
+    card.mobile ? `手機｜${clean(card.mobile, 50)}` : "",
+    card.email ? `Email｜${clean(card.email, 120)}` : "",
+    card.address ? `地址｜${clean(card.address, 160)}` : "",
+  ].filter(Boolean).join("\n");
+  const bodyContents = [
+    { type:"text", text:"電子名片", size:"xs", color:"#B96072", weight:"bold" },
+    { type:"text", text:displayName, weight:"bold", size:"xl", color:"#2A2030", wrap:true, margin:"sm" },
+    ...(card.englishName ? [{ type:"text", text:clean(card.englishName, 80), size:"sm", color:"#857581", wrap:true, margin:"xs" }] : []),
+    ...(card.companyName ? [{ type:"text", text:clean(card.companyName, 120), weight:"bold", size:"md", color:"#493E48", wrap:true, margin:"md" }] : []),
+    ...(position ? [{ type:"text", text:position, size:"sm", color:"#5E5260", wrap:true, margin:"xs" }] : []),
+    ...(card.serviceDescription ? [{ type:"text", text:clean(card.serviceDescription, 500), size:"sm", color:"#5E5260", wrap:true, margin:"md", maxLines:4 }] : []),
+    ...(contactLines ? [{ type:"separator", margin:"lg" }, { type:"text", text:contactLines, size:"xs", color:"#6F626D", wrap:true, margin:"lg", maxLines:5 }] : []),
+  ];
+  const actions = [
+    { label:"查看完整名片", uri:shareUrl, color:"#B96072" },
+    card.mobile && { label:"撥打電話", uri:`tel:${String(card.mobile).replace(/[^+0-9]/g, "")}`, color:"#3E8F70" },
+    validWebUrl(card.lineUrl) && { label:"加入 LINE", uri:validWebUrl(card.lineUrl), color:"#06C755" },
+    card.address && { label:"查看地圖", uri:`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(card.address)}`, color:"#8A6B4F" },
+    validWebUrl(card.websiteUrl) && { label:"公司網站", uri:validWebUrl(card.websiteUrl), color:"#6574A8" },
+  ].filter(Boolean).slice(0, 4);
+  let imageUrl = "";
+  if (hasImage) {
+    try {
+      const token = new URL(shareUrl).pathname.split("/").filter(Boolean).pop();
+      if (token) imageUrl = `${location.origin}/v1/card-collection/shared/${encodeURIComponent(token)}/image`;
+    } catch {}
+  }
+  return {
+    type:"bubble", size:"mega",
+    ...(imageUrl ? { hero:{ type:"image", url:imageUrl, size:"full", aspectRatio:"20:13", aspectMode:"cover", action:{type:"uri",uri:shareUrl} } } : {}),
+    body:{ type:"box", layout:"vertical", paddingAll:"20px", contents:bodyContents },
+    footer:{ type:"box", layout:"vertical", spacing:"sm", contents:actions.map((item) => button(item.label, item.uri, item.color)) },
+  };
+}
 async function compressCardImage(file) {
   if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
   const source = await createImageBitmap(file);
@@ -1097,7 +1141,7 @@ async function showContactEditor(card) {
   const showDigital=async()=>{
     const panel=$("#collectionDigitalPanel");panel.innerHTML=digitalCardMarkup(readCollectionForm());
     if(card.hasImage){digitalImageUrl=digitalImageUrl||await authorizedImageUrl(card);const image=$("#collectedDigitalImage");if(image&&digitalImageUrl)image.src=digitalImageUrl;}
-    $("#shareCollectedCard").onclick=async()=>{const button=$("#shareCollectedCard");try{await withActionFeedback(button,async()=>{const result=await api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"POST",body:"{}"});const share=result.share,text=`${share.displayName||"電子名片"}\n${share.url}`;if(window.liff){try{await initLiffOnce();if(liff.isApiAvailable?.("shareTargetPicker")){await liff.shareTargetPicker([{type:"text",text}]);return}}catch{}}if(navigator.share){await navigator.share({title:`${share.displayName||"電子名片"}`,text:"電子名片",url:share.url});return}await navigator.clipboard.writeText(share.url);alert("分享網址已複製");},{busy:"建立分享中…",success:"已建立分享"})}catch(error){if(error?.name!=="AbortError")alert(error.message||"分享失敗")}};
+    $("#shareCollectedCard").onclick=async()=>{const button=$("#shareCollectedCard");try{await withActionFeedback(button,async()=>{const current=readCollectionForm();const result=await api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"POST",body:"{}"});await initLiffOnce();if(!liff.isLoggedIn())throw new Error("請先從 LINE 登入會員中心，再分享電子名片");if(!liff.isApiAvailable?.("shareTargetPicker"))throw new Error("目前的 LINE 環境不支援名片分享，請從 LINE 開啟會員中心，並確認 LIFF 已啟用 shareTargetPicker");const shared=await liff.shareTargetPicker([{type:"flex",altText:`電子名片｜${String(current.displayName||"未命名名片").slice(0,100)}`,contents:collectedCardFlex(current,result.share.url,card.hasImage)}]);if(shared===false){const cancelled=new Error("已取消分享");cancelled.name="AbortError";throw cancelled;}alert("電子名片已分享");},{busy:"開啟名片分享中…",success:"分享完成"})}catch(error){if(error?.name!=="AbortError")alert(error.message||"名片分享失敗")}};
     $("#stopCollectedCardShare").onclick=async()=>{if(!confirm("確定停止這張名片目前的公開分享？舊網址將立即失效。"))return;const button=$("#stopCollectedCardShare");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"DELETE"}),{busy:"停止分享中…",success:"已停止分享"})}catch(error){alert(error.message||"停止分享失敗")}};
   };
   document.querySelectorAll("[data-collection-tab]").forEach(button=>button.onclick=async()=>{const digital=button.dataset.collectionTab==="digital";document.querySelectorAll("[data-collection-tab]").forEach(item=>item.classList.toggle("active",item===button));$("#collectionContentPanel").classList.toggle("hidden",digital);$("#collectionDigitalPanel").classList.toggle("hidden",!digital);if(digital)await showDigital();});
