@@ -6,6 +6,8 @@ const CARD_COLUMNS = `
   cover_url, buttons_json, selected_version, versions_json, status, created_at, updated_at
 `;
 const DEFAULT_CARD_COVER_URL = '/card-default-cover.jpg';
+const FIXED_STORE_ADDRESS = '台中市烏日區高鐵一路268號7樓之11';
+const FIXED_STORE_MAP_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(FIXED_STORE_ADDRESS)}`;
 const DEFAULT_SERVICE_DESCRIPTION = `源自對美的熱愛創立了米拉
 專注研發天然安全保養彩妝
 嚴格品質把關貼近肌膚需求
@@ -52,16 +54,26 @@ function normaliseButtons(value) {
 function defaultCardButtons(card = {}) {
   const phone = text(card.mobile || card.companyPhone, 40).replace(/[\s()-]/g, '');
   const lineUrl = text(card.lineUrl, 2048);
-  const address = text(card.address, 300);
-  const website = text(card.websiteUrl, 2048);
   const googleUrl = 'https://www.google.com/';
   return normaliseButtons([
     { label: '撥打電話', type: phone ? 'phone' : 'url', value: phone ? `tel:${phone}` : googleUrl, color: '#B96072' },
     { label: '加入 LINE 好友', type: lineUrl ? 'line' : 'url', value: lineUrl || googleUrl, color: '#B96072' },
-    address
-      ? { label: '店家地址', type: 'map', value: address, color: '#8D6A54' }
-      : { label: '官方網站', type: 'url', value: website || googleUrl, color: '#8D6A54' },
+    { label: '店家地址', type: 'map', value: FIXED_STORE_MAP_URL, color: '#8D6A54' },
   ]);
+}
+
+function enforceFixedCardActions(buttons, defaults) {
+  const result = [...buttons];
+  while (result.length < 2) result.push(defaults[result.length]);
+  result[2] = {
+    label: '店家地址',
+    type: 'map',
+    value: FIXED_STORE_MAP_URL,
+    color: '#8D6A54',
+    order: 3,
+    enabled: true,
+  };
+  return result.slice(0, 4).map((button, index) => ({ ...button, order: index + 1 }));
 }
 
 const CARD_VERSIONS = ['standard', 'full', 'square'];
@@ -95,7 +107,7 @@ function parseVersions(row) {
     const source = input?.[version] || {};
     const storedButtons = normaliseButtons(source.buttons || (version === 'standard' ? legacyButtons : []));
     const buttonDefaultsSeeded = source.buttonDefaultsSeeded === true;
-    const buttons = seedDefaultButtons(storedButtons, defaults, buttonDefaultsSeeded);
+    const buttons = enforceFixedCardActions(seedDefaultButtons(storedButtons, defaults, buttonDefaultsSeeded), defaults);
     result[version] = {
       coverUrl: text(source.coverUrl || (version === 'standard' ? row.cover_url : ''), 2048) || DEFAULT_CARD_COVER_URL,
       title: text(source.title, 120),
