@@ -10,6 +10,7 @@
   },
   "vars": {
     "LIFF_ID": "2010723037-HnKrhEXb",
+    "CHECKIN_LIFF_ID": "",
     "LINE_LOGIN_CHANNEL_ID": "2010723037"
   },
   "d1_databases": [
