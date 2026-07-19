@@ -129,11 +129,27 @@ function courseCheckinCompactLiffHtml(env, origin) {
   const title=document.querySelector("#title"), message=document.querySelector("#message"), spinner=document.querySelector("#spinner"), mark=document.querySelector("#mark"), app=document.querySelector("#app");
   const show=(heading,detail,type="")=>{title.textContent=heading;message.textContent=detail||"";spinner.style.display="none";mark.classList.add("show");app.className=type;};
   const close=()=>setTimeout(()=>{try{if(liff.isInClient())liff.closeWindow();else window.close();}catch(_){window.close();}},2400);
+  // LIFF OAuth 回跳時網址會帶 liff.state / code；絕不可再拿原網址登入，
+  // 否則會將舊 code 重複兌換，造成 LIFF 開關循環。
+  const cleanCheckinRedirect=()=>{
+    const url=new URL(location.href);
+    ["code","state","scope","error","error_description","liff.state","liff.referrer"].forEach((key)=>url.searchParams.delete(key));
+    url.searchParams.set("smartCheckin","1");
+    return url.toString();
+  };
   (async()=>{
     try{
       await liff.init({liffId:LIFF_ID});
-      if(!liff.isInClient())throw new Error("請從 LINE 開啟課程報到 QR Code");
-      if(!liff.isLoggedIn()){liff.login({redirectUri:location.href});return;}
+      if(!liff.isLoggedIn()){
+        // 一次回跳後仍沒有登入態時停在結果頁，不再自動重導而陷入循環。
+        if(sessionStorage.getItem("mirabeauty_compact_checkin_login")==="1"){
+          sessionStorage.removeItem("mirabeauty_compact_checkin_login");
+          throw new Error("LINE 登入未完成，請關閉後重新掃描報到 QR Code");
+        }
+        sessionStorage.setItem("mirabeauty_compact_checkin_login","1");
+        liff.login({redirectUri:cleanCheckinRedirect()});return;
+      }
+      sessionStorage.removeItem("mirabeauty_compact_checkin_login");
       const profile=await liff.getProfile().catch(()=>null);
       const auth=await fetch(API_ORIGIN+"/v1/auth/line/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken:liff.getIDToken(),accessToken:liff.getAccessToken()||"",pictureUrl:profile?.pictureUrl||"",displayName:profile?.displayName||""})});
       const identity=await auth.json().catch(()=>({}));
@@ -142,7 +158,7 @@ function courseCheckinCompactLiffHtml(env, origin) {
       const result=await checkin.json().catch(()=>({}));
       if(!checkin.ok)throw new Error(({no_active_session:"目前沒有可報到的活動，請確認時間。",registration_required:"尚未報名本場活動，無法報到。",session_unavailable:"此活動目前無法報到。"}[result.error])||result.error||"報到失敗");
       show(result.duplicate?"本課程已完成報到":"課程報到成功",result.duplicate?"你已完成本場簽到。":"已核對報名與報到時間，簽到點數將依規則入帳。","success");close();
-    }catch(error){show("暫時無法完成報到",error.message||"請稍後再試","error");close();}
+    }catch(error){show("暫時無法完成報到",error.message||"請稍後再試","error");}
   })();
 </script></body></html>`,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
