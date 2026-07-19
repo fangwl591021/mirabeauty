@@ -444,6 +444,11 @@ body.template-page{background:#f5f7fb;overflow:auto}body.template-page .sidebar,
 .checkinDirectoryHead{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
 .checkinDirectoryHead h3{margin:0;color:#17365d;font-size:20px}
 .checkinDirectoryHead p{margin:5px 0 0;color:#7185a3;font-size:13px}
+.checkinDirectoryToolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.checkinDirectoryToolbar input{width:min(360px,100%);height:38px;border:1px solid #d7e1ed;border-radius:8px;padding:0 11px;font:inherit}
+.checkinDirectoryToolbar span,.checkinDirectoryPager span{color:#7185a3;font-size:13px;font-weight:700}
+.checkinDirectoryPager{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:11px}
+.checkinDirectoryPager button:disabled{opacity:.45;cursor:not-allowed}
 .checkinDirectoryTableWrap{overflow:auto;border:1px solid #e3e9f1;border-radius:10px}
 .checkinDirectoryTable{width:100%;border-collapse:collapse;min-width:720px}
 .checkinDirectoryTable th{padding:11px 13px;background:#f7f9fc;border-bottom:1px solid #e3e9f1;color:#617696;text-align:left;font-size:13px;font-weight:800}
