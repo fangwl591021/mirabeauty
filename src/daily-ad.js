@@ -85,10 +85,10 @@ export async function getDailyAdCampaign(db, userId, campaignId = "") {
   const checkin = await db
     .prepare(
       `
-    SELECT id FROM daily_checkins WHERE platform_user_id = ? AND business_date = ? AND status = 'verified'
+    SELECT id FROM daily_checkins WHERE platform_user_id = ? AND campaign_id = ? AND business_date = ? AND status = 'verified'
   `,
     )
-    .bind(userId, date)
+    .bind(userId, campaign.id, date)
     .first();
   return {
     campaign: {
@@ -245,7 +245,18 @@ export async function checkInDailyAd(db, userId, campaignId = "") {
     )
     .bind(userId, campaign.id, date)
     .first();
-  if (alreadyCheckedIn) return { ok: true, duplicate: true };
+  if (alreadyCheckedIn) {
+    // 舊版可能先寫入簽到紀錄但因每日上限 bug 未寫點數。
+    // 再次確認時以同一冪等鍵補發；已有帳務紀錄則安全地不重複加點。
+    const pointResult = await awardPoints(db, {
+      userId,
+      eventType: "daily_ad_checkin",
+      eventReference: `${campaign.id}:${date}`,
+      idempotencyKey: `daily_ad_checkin:${campaign.id}:${date}:${userId}`,
+      metadata: { checkinId: alreadyCheckedIn.id, campaignId: campaign.id, reconciled: true },
+    });
+    return { ok: true, duplicate: true, checkinId: alreadyCheckedIn.id, pointResult };
+  }
   const qualifying = await db
     .prepare(
       `
