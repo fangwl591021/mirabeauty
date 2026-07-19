@@ -124,6 +124,7 @@ if (smartCheckinFromLocation()) sessionStorage.setItem("mirabeauty_smart_checkin
 if (cardShareIdFromLocation()) sessionStorage.setItem("mirabeauty_card_share_id", state.cardShareId);
 if (cardShareModeFromLocation()) sessionStorage.setItem("mirabeauty_card_share_mode", "1");
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", task_completed:"完成任務" };
+const FIXED_CARD_IMAGE_LINK = "https://lin.ee/ngaHmLM";
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
     ...options,
@@ -637,7 +638,7 @@ function cardFlex(card) {
   const actions = (card.buttons || []).filter((button) => button?.enabled !== false && button?.label && button?.value).slice(0, 4);
   return {
     type:"bubble", size:version.id === "full" ? "giga" : "mega",
-    ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:version.aspect, aspectMode:"cover" } } : {}),
+    ...(card.coverUrl ? { hero:{ type:"image", url:card.coverUrl, size:"full", aspectRatio:version.aspect, aspectMode:"cover", action:{type:"uri",uri:FIXED_CARD_IMAGE_LINK} } } : {}),
     header:{ type:"box", layout:"horizontal", justifyContent:"space-between", alignItems:"center", paddingAll:"8px", contents:[
       { type:"box", layout:"vertical", flex:1, contents:[] },
       { type:"box", layout:"vertical", justifyContent:"center", backgroundColor:"#EF4444", width:"65px", height:"25px", cornerRadius:"25px", contents:[
@@ -1005,7 +1006,7 @@ async function publicCard() {
     const result = await api(`/v1/cards/${encodeURIComponent(state.publicCard)}/public`);
     const shared = result.card;
     const actions = cardActionItems(shared);
-    $("#app").innerHTML = `<section class="public-card-page">${shared.coverUrl ? `<img class="public-card-cover" src="${esc(shared.coverUrl)}" alt="${esc(shared.displayName)} 的名片">` : ""}<section class="public-card-body"><h1>${esc(shared.displayName)}</h1>${shared.englishName ? `<p class="muted">${esc(shared.englishName)}</p>` : ""}<h2>${esc(shared.companyName)}</h2><p>${esc([shared.jobTitle,shared.department].filter(Boolean).join("｜"))}</p>${shared.serviceDescription ? `<p class="public-card-service" style="text-align:${esc(shared.serviceTextAlign || "left")}">${esc(shared.serviceDescription)}</p>` : ""}${cardContactRows(shared)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div><button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section>`;
+    $("#app").innerHTML = `<section class="public-card-page">${shared.coverUrl ? `<a href="${FIXED_CARD_IMAGE_LINK}" target="_blank" rel="noopener"><img class="public-card-cover" src="${esc(shared.coverUrl)}" alt="${esc(shared.displayName)} 的名片"></a>` : ""}<section class="public-card-body"><h1>${esc(shared.displayName)}</h1>${shared.englishName ? `<p class="muted">${esc(shared.englishName)}</p>` : ""}<h2>${esc(shared.companyName)}</h2><p>${esc([shared.jobTitle,shared.department].filter(Boolean).join("｜"))}</p>${shared.serviceDescription ? `<p class="public-card-service" style="text-align:${esc(shared.serviceTextAlign || "left")}">${esc(shared.serviceDescription)}</p>` : ""}${cardContactRows(shared)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div><button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section>`;
     $("#openMemberHome").onclick = () => { state.publicCard = ""; history.replaceState({}, "", location.pathname); render(); };
   } catch (error) {
     $("#app").innerHTML = `<section class="center">${esc(error.message || "找不到這張名片")}</section>`;
