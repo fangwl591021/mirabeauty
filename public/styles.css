@@ -92,3 +92,11 @@
 .wallet-reward-members{margin:0 0 10px 12px;padding:4px 0 4px 12px;border-left:2px solid #f0dbe1}
 .wallet-reward-members>div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;color:#59677a}
 .wallet-reward-members small{color:#8792a2;text-align:right}
+
+/* 公開掃碼名片：可切換已建立的三種版型 */
+.public-card-version-tabs{display:flex;justify-content:center;gap:8px;padding:12px 12px 0;background:#fff}
+.public-card-version-tabs button{min-width:68px;padding:6px 12px;border:1px solid #e5c7d0;border-radius:7px;background:#fff;color:#8e5265;font-size:13px;font-weight:750}
+.public-card-version-tabs button.active{border-color:#b96078;background:#b96078;color:#fff}
+.public-card-cover-standard{aspect-ratio:20/13;object-fit:cover}
+.public-card-cover-full{aspect-ratio:2/3;object-fit:cover}
+.public-card-cover-square{aspect-ratio:1/1;object-fit:cover}
