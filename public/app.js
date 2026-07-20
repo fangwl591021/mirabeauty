@@ -188,7 +188,7 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["MiraBeauty 會員中心","會員服務與活動入口。"];
   const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : state.tab === "cardCollection" ? `<button class="feature-header-action" data-home-action="card">我的名片</button>` : "";
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div>${headerAction}</header>`;
@@ -299,6 +299,7 @@ async function render() {
   if (state.tab === "courses") return courses();
   if (state.tab === "daily") return daily();
   if (state.tab === "card") return card();
+  if (state.tab === "zodiac") return zodiac();
   if (state.tab === "cardCollection") return cardCollection();
   if (state.tab === "profile") return profile();
   return home();
@@ -325,10 +326,56 @@ const portalIcon = (name) => ({
   courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2c1.3 2.3 3 3.3 5.2 3.6-1.6 1.6-2.2 3.3-1.8 5.5-2.1-.6-3.5-.1-5.4 1.4.1-2.4-.8-4-2.8-5.4 2.3-.6 3.8-2 4.8-5.2Z"/><path d="M18.8 14.5c.5.9 1.2 1.3 2.1 1.5-.7.6-.9 1.3-.7 2.2-.8-.3-1.4 0-2.2.5.1-.9-.3-1.6-1.1-2.1.9-.2 1.5-.8 1.9-1.9Z"/></svg>`,
   daily: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.6"/><path d="m9.1 12.6-1.4 7 4.3-2 4.3 2-1.4-7"/><path d="m12 6.5.75 1.7 1.85.15-1.4 1.22.42 1.8L12 10.4l-1.62 1.02.42-1.8-1.4-1.22 1.85-.15Z"/></svg>`,
   profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.3" y="4.3" width="15.4" height="15.4" rx="3.2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 7.1h.01M16 7.1h.01"/></svg>`,
-  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 11 7.5-6.2 7.5 6.2v8.3H4.5z"/><path d="M9 19.3v-4.4h6v4.4M12 7.2v3.1M10.45 8.75h3.1"/></svg>`
+  home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 11 7.5-6.2 7.5 6.2v8.3H4.5z"/><path d="M9 19.3v-4.4h6v4.4M12 7.2v3.1M10.45 8.75h3.1"/></svg>`,
+  zodiac: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.8 1.1 3.2 3.3.1-2.6 2 1 3.2-2.8-1.9-2.8 1.9 1-3.2-2.6-2 3.3-.1z"/><path d="M18.4 14.4a3.8 3.8 0 1 1-4.8 4.8 4.6 4.6 0 0 0 4.8-4.8Z"/></svg>`
 }[name] || "");
-const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="card"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="cardCollection"?"cardCollection":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
+const zodiacRanges = [
+  [119,"摩羯座","♑"],[218,"水瓶座","♒"],[320,"雙魚座","♓"],[419,"牡羊座","♈"],
+  [520,"金牛座","♉"],[621,"雙子座","♊"],[722,"巨蟹座","♋"],[822,"獅子座","♌"],
+  [922,"處女座","♍"],[1023,"天秤座","♎"],[1122,"天蠍座","♏"],[1221,"射手座","♐"],[1231,"摩羯座","♑"]
+];
+function zodiacFromBirthday(birthday) {
+  const match = String(birthday || "").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!match) return null;
+  const md = Number(match[2]) * 100 + Number(match[3]);
+  const result = zodiacRanges.find(([max]) => md <= max) || zodiacRanges[0];
+  return { name:result[1], symbol:result[2] };
+}
+function dailyZodiacFortune(birthday) {
+  const zodiac = zodiacFromBirthday(birthday);
+  if (!zodiac) return null;
+  const now = new Date();
+  const seed = Math.abs(Array.from(`${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${zodiac.name}`).reduce((sum,char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0));
+  const themes = ["溫柔聚焦","穩定前進","好感累積","靈感開展","自信表達","關係加溫","節奏整理"];
+  const advice = [
+    "今天適合把一件最重要的事做得更完整，不必同時回應所有事情。",
+    "先照顧自己的節奏，再安排與人的互動，事情會更順。",
+    "一句真誠的關心，會比急著說服更容易帶來好回應。",
+    "適合整理想法、更新形象，也適合把新的計畫先說給信任的人聽。",
+    "把注意力放在已經有進展的關係上，小小推進就很有力量。",
+    "今天適合保留一點空白；美感與直覺會幫你做出好選擇。",
+    "別急著做最後決定，先確認細節，答案會自然浮現。"
+  ];
+  const luckyColors = ["玫瑰粉","香檳金","奶油白","霧紫","珊瑚橘","鼠尾草綠","可可棕"];
+  const index = seed % themes.length;
+  return { zodiac, theme:themes[index], advice:advice[index], luckyColor:luckyColors[(seed >> 2) % luckyColors.length], score:72 + (seed % 25), date:`${now.getMonth()+1} 月 ${now.getDate()} 日` };
+}
+function showBirthdayRequiredDialog() {
+  document.querySelector(".birthday-required-dialog")?.remove();
+  const dialog = document.createElement("div");
+  dialog.className = "birthday-required-dialog";
+  dialog.innerHTML = `<div class="birthday-required-sheet" role="dialog" aria-modal="true" aria-labelledby="birthdayPromptTitle"><span class="zodiac-prompt-icon">✦</span><h2 id="birthdayPromptTitle">先填寫生日，才能查看星座運勢</h2><p>生日只用於判斷你的星座與顯示個人化內容，不會公開給其他會員。</p><div class="birthday-required-actions"><button class="btn alt" data-zodiac-prompt-close>稍後再說</button><button class="btn" data-zodiac-prompt-fill>前往填寫生日</button></div></div>`;
+  document.body.appendChild(dialog);
+  dialog.querySelector("[data-zodiac-prompt-close]").onclick = () => dialog.remove();
+  dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
+}
+async function zodiac() {
+  const fortune = dailyZodiacFortune(state.member?.birthday);
+  if (!fortune) return showBirthdayRequiredDialog();
+  layout(`<section class="zodiac-fortune-card"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>幸運指數</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-lucky"><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div><p class="muted small zodiac-note">每日內容會依日期更新；星座依註冊生日判斷。</p></section>`);
+}
+const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="card"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function home() {
   const wallet = await api("/v1/points/wallet");
   layout(
