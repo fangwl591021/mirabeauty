@@ -76,6 +76,12 @@ import {
   saveOpenAIKey,
   testOpenAIKey,
 } from "./openai-settings.js";
+import {
+  getMemberCrmInsight,
+  processMemberCrmInsight,
+  queueMemberCrmInsight,
+  queueSystemMemberCrmInsightBackfill,
+} from "./member-crm-insights.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -109,6 +115,16 @@ function scheduleContactCrmInsights(env, ctx, userId, id) {
   })();
   if(ctx?.waitUntil)ctx.waitUntil(task);
   else task.catch((error)=>console.error('Automatic CRM insight analysis failed',error));
+}
+
+function scheduleMemberCrmInsights(env,ctx,userId) {
+  const task=(async()=>{
+    const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
+    if(!openAIKey)throw new Error('AI 五大標籤尚未設定 API 金鑰');
+    await processMemberCrmInsight(env.DB,userId,openAIKey,env.OPENAI_CARD_MODEL);
+  })();
+  if(ctx?.waitUntil)ctx.waitUntil(task);
+  else task.catch((error)=>console.error('Automatic member CRM insight analysis failed',error));
 }
 
 async function readJson(request) {
@@ -365,6 +381,8 @@ async function app(request, env, ctx) {
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
       const card = await saveMyCard(env.DB, member.userId, (await readJson(request)) || {}, member);
+      await queueMemberCrmInsight(env.DB,member.userId);
+      scheduleMemberCrmInsights(env,ctx,member.userId);
       return json({ success: true, card }, card?.createdAt ? 200 : 201);
     } catch (error) {
       return badRequest(error.message || "Unable to save card");
@@ -523,6 +541,8 @@ async function app(request, env, ctx) {
         member.userId,
         (await readJson(request)) || {},
       );
+      await queueMemberCrmInsight(env.DB,member.userId);
+      scheduleMemberCrmInsights(env,ctx,member.userId);
       if (!wasCompleted) {
         await awardPoints(env.DB, {
           userId: member.userId,
@@ -767,7 +787,8 @@ async function app(request, env, ctx) {
         env.DB.prepare("SELECT mp.display_name, mp.member_number, rr.created_at FROM referral_relationships rr LEFT JOIN member_profiles mp ON mp.platform_user_id = rr.referred_user_id WHERE rr.referrer_user_id = ? AND rr.status = 'active' ORDER BY rr.created_at DESC LIMIT 30").bind(memberId),
       ]);
       const targetAccess = await getAdminAccess(env.DB, memberId, env.ADMIN_LINE_SUBJECTS);
-      return json({ success: true, member, access: admin.adminAccess, targetAccess, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
+      const crmInsights=await getMemberCrmInsight(env.DB,memberId);
+      return json({ success: true, member, crmInsights, access: admin.adminAccess, targetAccess, ledger: ledger.results || [], courses: courses.results || [], checkins: checkins.results || [], referrals: referrals.results || [] });
     }
     const memberPermissionsMatch = url.pathname.match(/^\/v1\/admin\/members\/([^/]+)\/permissions$/);
     if (request.method === "PATCH" && memberPermissionsMatch) {
@@ -845,6 +866,8 @@ async function app(request, env, ctx) {
             ? env.DB.prepare("INSERT INTO referral_relationships (id, referred_user_id, referrer_user_id, invite_link_id) VALUES (?, ?, ?, NULL) ON CONFLICT(referred_user_id) DO UPDATE SET referrer_user_id = excluded.referrer_user_id, invite_link_id = NULL, status = 'active', created_at = CURRENT_TIMESTAMP").bind(newId("referral"), memberId, referrerUserId)
             : env.DB.prepare("DELETE FROM referral_relationships WHERE referred_user_id = ?").bind(memberId),
         ]);
+        await queueMemberCrmInsight(env.DB,memberId);
+        scheduleMemberCrmInsights(env,ctx,memberId);
         return json({ success: true });
       } catch (error) { return badRequest(error.message || "Unable to update member"); }
     }
@@ -1384,6 +1407,8 @@ async function runSystemCrmInsightBackfill(env) {
     if(!openAIKey)return;
     const queued=await queueSystemCrmInsightBackfill(env.DB,6);
     for(const task of queued.tasks) await processContactInsightsInBackground(env.DB,task.userId,task.id,openAIKey,env.OPENAI_CARD_MODEL);
+    const memberTasks=await queueSystemMemberCrmInsightBackfill(env.DB,6);
+    for(const task of memberTasks)await processMemberCrmInsight(env.DB,task.userId,openAIKey,env.OPENAI_CARD_MODEL);
   } catch(error) {
     console.error("Scheduled CRM insight backfill failed",error);
   }
