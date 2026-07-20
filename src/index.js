@@ -61,7 +61,7 @@ import {
   recognizeImport,
   submitImportInBackground,
   processImportInBackground,
-  queueCrmInsightsBackfill,
+  queueContactCrmInsights,
   processContactInsightsInBackground,
   queueSystemCrmInsightBackfill,
   revokeContactShare,
@@ -99,6 +99,16 @@ const POINT_RULE_EVENTS = new Set([
 
 function badRequest(message) {
   return json({ success: false, error: message }, 400);
+}
+
+function scheduleContactCrmInsights(env, ctx, userId, id) {
+  const task=(async()=>{
+    const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
+    if(!openAIKey)throw new Error('AI 五大標籤尚未設定 API 金鑰');
+    await processContactInsightsInBackground(env.DB,userId,id,openAIKey,env.OPENAI_CARD_MODEL);
+  })();
+  if(ctx?.waitUntil)ctx.waitUntil(task);
+  else task.catch((error)=>console.error('Automatic CRM insight analysis failed',error));
 }
 
 async function readJson(request) {
@@ -404,6 +414,10 @@ async function app(request, env, ctx) {
     if (!member) return json({ success: false, error: "請先登入後再收藏名片" }, 401);
     try {
       const result = await collectPublicCard(env.DB, member.userId, decodeURIComponent(collectCardMatch[1]));
+      if(result.card?.aiInsights?.status !== 'ready') {
+        await queueContactCrmInsights(env.DB,member.userId,result.card.id);
+        scheduleContactCrmInsights(env,ctx,member.userId,result.card.id);
+      }
       return json({ success: true, ...result }, result.duplicate ? 200 : 201);
     } catch (error) {
       return json({ success: false, error: error.message, code: error.code || "collect_failed" }, error.code === "self_card" ? 409 : 400);
@@ -455,6 +469,7 @@ async function app(request, env, ctx) {
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
       const result = await confirmImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(confirmCardImport[1]), (await readJson(request)) || {});
+      scheduleContactCrmInsights(env,ctx,member.userId,result.card.id);
       return json({ success: true, ...result }, result.updated ? 200 : 201);
     } catch (error) {
       return json({ success: false, error: error.message || "名片儲存失敗", code: error.code || "save_failed", duplicate: error.duplicate || null }, error.code ? 409 : 400);
@@ -475,7 +490,11 @@ async function app(request, env, ctx) {
   if (request.method === "PATCH" && contactCardMatch) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    try { return json({ success: true, card: await updateContact(env.DB, member.userId, decodeURIComponent(contactCardMatch[1]), (await readJson(request)) || {}) }); }
+    try {
+      const card=await updateContact(env.DB,member.userId,decodeURIComponent(contactCardMatch[1]),(await readJson(request)) || {});
+      if(card.aiInsights?.status === 'queued')scheduleContactCrmInsights(env,ctx,member.userId,card.id);
+      return json({success:true,card});
+    }
     catch (error) { return badRequest(error.message || "收藏名片更新失敗"); }
   }
   if (request.method === "DELETE" && contactCardMatch) {
