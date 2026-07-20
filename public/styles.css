@@ -103,3 +103,11 @@
 .public-card-cover-standard{aspect-ratio:20/13;object-fit:cover}
 .public-card-cover-full{aspect-ratio:2/3;object-fit:cover}
 .public-card-cover-square{aspect-ratio:1/1;object-fit:cover}
+
+.line-source-public{width:min(100%,430px);margin:16px auto}
+.line-source-public .line-source-preview-cover{cursor:default}
+.line-source-public .line-source-preview-body{display:grid;gap:7px;padding:14px}
+.line-source-public-title{color:#2a2030;font:700 20px/1.35 inherit;text-align:center}
+.line-source-public-description{color:#6b5c68;font:13px/1.5 inherit;white-space:pre-line}
+.line-source-public .line-source-preview-footer a{display:grid;width:100%;min-height:36px;place-items:center;border-radius:8px;color:#fff;font:800 13px inherit;text-decoration:none}
+.public-card-collect{display:block;width:min(100%,430px);margin:12px auto}
