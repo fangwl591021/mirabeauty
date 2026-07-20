@@ -334,20 +334,73 @@ const zodiacRanges = [
   [520,"金牛座","♉"],[621,"雙子座","♊"],[722,"巨蟹座","♋"],[822,"獅子座","♌"],
   [922,"處女座","♍"],[1023,"天秤座","♎"],[1122,"天蠍座","♏"],[1221,"射手座","♐"],[1231,"摩羯座","♑"]
 ];
-function zodiacFromBirthday(birthday) {
+const zodiacProfiles = {
+  "牡羊座":["主動、直接、行動快","把衝勁留給最重要的一件事，先聽完再回應會更有力量。"],
+  "金牛座":["穩定、重視品質、有耐心","當你清楚說出標準與需求，別人會更容易信任你的選擇。"],
+  "雙子座":["好奇、靈活、善於交流","資訊很多時，選一個重點說清楚，比同時展開多個話題有效。"],
+  "巨蟹座":["細膩、重感受、保護關係","你的關心是優勢；記得也把界線和期待說得明白。"],
+  "獅子座":["熱情、表現力強、有領導感","適度分享成果能帶來機會，讓事實與故事一起說話。"],
+  "處女座":["觀察細緻、務實、重流程","不必追求一次完美；先完成可用的第一步，持續修正就很好。"],
+  "天秤座":["有美感、擅長協調、重公平","在關係中先確認彼此的期待，選擇會更容易做。"],
+  "天蠍座":["專注、洞察深、重承諾","把直覺轉成具體問題，能幫你更準確地理解對方。"],
+  "射手座":["樂觀、愛探索、視野開闊","保留自由也要留下可落地的下一步，想法才會變成成果。"],
+  "摩羯座":["有責任感、目標明確、耐力強","你擅長長期累積；偶爾肯定自己已完成的進度，也能走得更穩。"],
+  "水瓶座":["獨立、創新、思考前瞻","新點子很有價值；搭配簡單可理解的說法，就更容易被採納。"],
+  "雙魚座":["直覺敏銳、有同理心、富想像力","相信感受的同時，寫下具體安排，能讓靈感真正發揮作用。"]
+};
+const chineseZodiacProfiles = [
+  ["猴","機智轉換"],["雞","細節掌握"],["狗","信任維護"],["豬","資源整合"],
+  ["鼠","機會嗅覺"],["牛","穩定推進"],["虎","主動開局"],["兔","關係柔化"],
+  ["龍","格局放大"],["蛇","深度判斷"],["馬","行動節奏"],["羊","協調共創"]
+];
+function birthdayParts(birthday) {
   const match = String(birthday || "").match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (!match) return null;
-  const md = Number(match[2]) * 100 + Number(match[3]);
-  const result = zodiacRanges.find(([max]) => md <= max) || zodiacRanges[0];
-  return { name:result[1], symbol:result[2] };
+  return match ? { year:Number(match[1]), month:Number(match[2]), day:Number(match[3]) } : null;
 }
-function dailyZodiacFortune(birthday) {
-  const zodiac = zodiacFromBirthday(birthday);
-  if (!zodiac) return null;
+function zodiacFromBirthday(birthday) {
+  const parts = birthdayParts(birthday);
+  if (!parts) return null;
+  const md = parts.month * 100 + parts.day;
+  const result = zodiacRanges.find(([max]) => md <= max) || zodiacRanges[0];
+  return { name:result[1], symbol:result[2], parts };
+}
+function lifeNumberFromBirthday(birthday) {
+  const parts = birthdayParts(birthday);
+  if (!parts) return null;
+  let total = String(parts.year) + String(parts.month).padStart(2,"0") + String(parts.day).padStart(2,"0");
+  total = total.split("").reduce((sum,digit) => sum + Number(digit), 0);
+  while (total > 9 && total !== 11 && total !== 22) total = String(total).split("").reduce((sum,digit) => sum + Number(digit), 0);
+  const profiles = {
+    1:["開創者","適合主動做決定、設定方向；提醒自己保留他人的參與空間。"],
+    2:["協調者","重視關係與感受；清楚表達需求，能避免把壓力留給自己。"],
+    3:["表達者","擅長創意與溝通；把靈感整理成可執行的小步驟會很有成果。"],
+    4:["建構者","可靠且重視秩序；有計畫地累積，會是你的安全感來源。"],
+    5:["探索者","喜歡新鮮與彈性；在變化中留下核心原則，方向就不會散掉。"],
+    6:["照顧者","天生在意責任與美感；先照顧自己，才能更長久地照顧他人。"],
+    7:["思辨者","需要獨處思考與理解深度；用你的觀察力建立真正的專業。"],
+    8:["實踐者","有資源整合與結果意識；善用影響力時也記得維持溫度。"],
+    9:["整合者","有同理與大局觀；選擇值得長期投入的人事物，能發揮更大價值。"],
+    11:["啟發者","直覺與感受很強；把願景化為具體行動，會帶給身邊人信心。"],
+    22:["實現者","能把大想法落地；拆解階段目標，會讓影響力穩定擴大。"]
+  };
+  return { number:total, ...(profiles[total] ? { title:profiles[total][0], advice:profiles[total][1] } : {}) };
+}
+function chineseZodiacFromBirthday(birthday) {
+  const parts = birthdayParts(birthday);
+  if (!parts) return null;
+  const profile = chineseZodiacProfiles[parts.year % 12];
+  return { name:profile[0], trait:profile[1] };
+}
+function fortuneSeed(text) {
+  return Math.abs(Array.from(text).reduce((sum,char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0));
+}
+function buildPersonalFortune(birthday) {
+  const zodiac = zodiacFromBirthday(birthday), life = lifeNumberFromBirthday(birthday), chinese = chineseZodiacFromBirthday(birthday);
+  if (!zodiac || !life || !chinese) return null;
   const now = new Date();
-  const seed = Math.abs(Array.from(`${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${zodiac.name}`).reduce((sum,char) => ((sum << 5) - sum + char.charCodeAt(0)) | 0, 0));
+  const seed = fortuneSeed([now.getFullYear(),now.getMonth()+1,now.getDate(),zodiac.name,life.number].join("-"));
   const themes = ["溫柔聚焦","穩定前進","好感累積","靈感開展","自信表達","關係加溫","節奏整理"];
-  const advice = [
+  const advices = [
     "今天適合把一件最重要的事做得更完整，不必同時回應所有事情。",
     "先照顧自己的節奏，再安排與人的互動，事情會更順。",
     "一句真誠的關心，會比急著說服更容易帶來好回應。",
@@ -356,23 +409,24 @@ function dailyZodiacFortune(birthday) {
     "今天適合保留一點空白；美感與直覺會幫你做出好選擇。",
     "別急著做最後決定，先確認細節，答案會自然浮現。"
   ];
-  const luckyColors = ["玫瑰粉","香檳金","奶油白","霧紫","珊瑚橘","鼠尾草綠","可可棕"];
+  const colors = ["玫瑰粉","香檳金","奶油白","霧紫","珊瑚橘","鼠尾草綠","可可棕"];
   const index = seed % themes.length;
-  return { zodiac, theme:themes[index], advice:advice[index], luckyColor:luckyColors[(seed >> 2) % luckyColors.length], score:72 + (seed % 25), date:`${now.getMonth()+1} 月 ${now.getDate()} 日` };
+  return { zodiac, life, chinese, theme:themes[index], advice:advices[index], luckyColor:colors[(seed >> 2) % colors.length], score:72 + seed % 25, relation:68 + (seed >> 1) % 29, career:70 + (seed >> 3) % 27, date:`${now.getMonth()+1} 月 ${now.getDate()} 日` };
 }
 function showBirthdayRequiredDialog() {
   document.querySelector(".birthday-required-dialog")?.remove();
   const dialog = document.createElement("div");
   dialog.className = "birthday-required-dialog";
-  dialog.innerHTML = `<div class="birthday-required-sheet" role="dialog" aria-modal="true" aria-labelledby="birthdayPromptTitle"><span class="zodiac-prompt-icon">✦</span><h2 id="birthdayPromptTitle">先填寫生日，才能查看星座運勢</h2><p>生日只用於判斷你的星座與顯示個人化內容，不會公開給其他會員。</p><div class="birthday-required-actions"><button class="btn alt" data-zodiac-prompt-close>稍後再說</button><button class="btn" data-zodiac-prompt-fill>前往填寫生日</button></div></div>`;
+  dialog.innerHTML = `<div class="birthday-required-sheet" role="dialog" aria-modal="true" aria-labelledby="birthdayPromptTitle"><span class="zodiac-prompt-icon">✦</span><h2 id="birthdayPromptTitle">先填寫生日，才能查看星座運勢</h2><p>生日只用於判斷你的星座、生肖與生命靈數，不會公開給其他會員。</p><div class="birthday-required-actions"><button class="btn alt" data-zodiac-prompt-close>稍後再說</button><button class="btn" data-zodiac-prompt-fill>前往填寫生日</button></div></div>`;
   document.body.appendChild(dialog);
   dialog.querySelector("[data-zodiac-prompt-close]").onclick = () => dialog.remove();
   dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
 }
 async function zodiac() {
-  const fortune = dailyZodiacFortune(state.member?.birthday);
+  const fortune = buildPersonalFortune(state.member?.birthday);
   if (!fortune) return showBirthdayRequiredDialog();
-  layout(`<section class="zodiac-fortune-card"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>幸運指數</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-lucky"><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div><p class="muted small zodiac-note">每日內容會依日期更新；星座依註冊生日判斷。</p></section>`);
+  const [traits, zodiacTip] = zodiacProfiles[fortune.zodiac.name] || ["獨特、真誠、持續成長","保持自己的步調。"];
+  layout(`<section class="zodiac-fortune-card zodiac-comprehensive"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>今日整體</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-score-grid"><div><span>事業</span><b>${fortune.career}</b></div><div><span>人際</span><b>${fortune.relation}</b></div><div><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div></div><div class="zodiac-insight-grid"><article><small>基本性格</small><h3>${esc(fortune.zodiac.name)}</h3><p>${esc(traits)}</p><p class="muted">${esc(zodiacTip)}</p></article><article><small>生肖特質</small><h3>生肖 ${esc(fortune.chinese.name)}</h3><p>${esc(fortune.chinese.trait)}</p><p class="muted">把你的優勢用在最值得經營的關係與目標上。</p></article><article><small>生命靈數</small><h3>${fortune.life.number}｜${esc(fortune.life.title)}</h3><p>${esc(fortune.life.advice)}</p></article></div><div class="zodiac-action"><small>今日行動建議</small><b>選一件最想推進的事情，安排一個能在今天完成的小步驟。</b></div><p class="muted small zodiac-note">內容為個人化生活建議與娛樂參考；每日內容會依日期更新。</p></section>`);
 }
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="card"><i class="portal-menu-icon pink">${portalIcon("profile")}</i><span>我的名片</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
