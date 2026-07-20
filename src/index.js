@@ -55,6 +55,7 @@ import {
   createContactShare,
   createImport,
   deleteContact,
+  expandContactContent,
   listContacts,
   getSharedContact,
   recognizeImport,
@@ -442,6 +443,16 @@ async function app(request, env) {
   }
 
   const contactCardMatch = url.pathname.match(/^\/v1\/card-collection\/([^/]+)$/);
+  const contactContentExpandMatch = url.pathname.match(/^\/v1\/card-collection\/([^/]+)\/content-suggestions$/);
+  if (request.method === "POST" && contactContentExpandMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success:false, error:"Unauthorized" }, 401);
+    try {
+      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+      const result = await expandContactContent(env.DB, member.userId, decodeURIComponent(contactContentExpandMatch[1]), openAIKey, env.OPENAI_CARD_MODEL);
+      return json({ success:true, ...result });
+    } catch (error) { return badRequest(error.message || "AI 擴寫失敗"); }
+  }
   if (request.method === "PATCH" && contactCardMatch) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
