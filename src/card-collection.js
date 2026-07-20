@@ -5,6 +5,46 @@ const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const FIELD_LIMITS = { displayName:120, englishName:120, companyName:180, jobTitle:120, department:120, mobile:40, companyPhone:40, email:320, websiteUrl:2048, lineUrl:2048, address:300, serviceDescription:1600, note:1000 };
 const text = (value, max = 1000) => String(value || '').trim().slice(0, max);
+const CARD_VERSIONS = ['standard', 'full', 'square'];
+const VERSION_LAYOUT = { standard:'landscape', full:'portrait', square:'square' };
+const DEFAULT_CHAT_ALT_TEXT = '您收到一張數位名片';
+const normaliseTextAlign = (value) => ['left', 'center', 'right'].includes(String(value || '')) ? String(value) : 'left';
+
+function normaliseButtons(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).map((item, index) => {
+    const label = text(item?.label, 24);
+    const type = ['url','phone','email','line','map'].includes(item?.type) ? item.type : 'url';
+    let target = text(item?.value, 2048);
+    if (!label || !target) return null;
+    if (type === 'phone') target = `tel:${target.replace(/^tel:/i, '').replace(/[\s()-]/g, '')}`;
+    if (type === 'email') target = `mailto:${target.replace(/^mailto:/i, '')}`;
+    if (type === 'map' && !/^https?:\/\//i.test(target)) target = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(target)}`;
+    if (['url','line'].includes(type) && !/^https?:\/\//i.test(target)) return null;
+    return { label, type, value:target, color:/^#[0-9a-f]{6}$/i.test(String(item?.color || '')) ? String(item.color) : '#B96072', order:index + 1, enabled:item?.enabled !== false };
+  }).filter(Boolean);
+}
+function defaultButtons(row = {}) {
+  const phone = text(row.mobile || row.company_phone, 40).replace(/[\s()-]/g, '');
+  const line = text(row.line_url, 2048);
+  const address = text(row.address, 300);
+  return normaliseButtons([
+    { label:'撥打電話', type:phone ? 'phone' : 'url', value:phone || 'https://www.google.com/', color:'#B96072' },
+    { label:'加入 LINE 好友', type:line ? 'line' : 'url', value:line || 'https://www.google.com/', color:'#B96072' },
+    { label:'店家地址', type:address ? 'map' : 'url', value:address || 'https://www.google.com/', color:'#8D6A54' },
+  ]);
+}
+function parseVersions(row = {}) {
+  let source = {}; try { source = JSON.parse(row.versions_json || '{}'); } catch {}
+  const defaults = defaultButtons(row);
+  return Object.fromEntries(CARD_VERSIONS.map((id) => {
+    const value = source?.[id] || {};
+    return [id, { coverUrl:text(value.coverUrl, 2048), title:text(value.title, 120), description:text(value.description, 1600), serviceTextAlign:normaliseTextAlign(value.serviceTextAlign), descriptionTextAlign:normaliseTextAlign(value.descriptionTextAlign), buttons:normaliseButtons(value.buttons).length ? normaliseButtons(value.buttons) : defaults, buttonDefaultsSeeded:value.buttonDefaultsSeeded === true, layout:VERSION_LAYOUT[id] }];
+  }));
+}
+function normaliseVersions(value, row = {}) {
+  return parseVersions({ ...row, versions_json:JSON.stringify(value && typeof value === 'object' ? value : {}) });
+}
 export const normalizePhone = (value) => text(value, 60).replace(/[^0-9+]/g, '').replace(/^\+8860?/, '0');
 export const normalizeEmail = (value) => text(value, 320).toLowerCase();
 export const normalizeNameCompany = (name, company) => `${text(name, 120)}|${text(company, 180)}`.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
@@ -21,7 +61,10 @@ function cleanCard(input = {}) {
 
 function rowToCard(row) {
   if (!row) return null;
-  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, hasImage:Boolean(row.front_r2_key), createdAt:row.created_at, updatedAt:row.updated_at };
+  const versions = parseVersions(row);
+  const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard';
+  const selected = versions[selectedVersion];
+  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), createdAt:row.created_at, updatedAt:row.updated_at };
 }
 
 async function findDuplicate(db, ownerId, card, excludedId = '') {
@@ -125,7 +168,10 @@ export async function listContacts(db,userId,search='') {
 export async function updateContact(db,userId,id,payload) {
   const existing=await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id,userId).first(); if(!existing) throw new Error('找不到收藏名片');
   const card=cleanCard({...rowToCard(existing),...payload}); const duplicate=await findDuplicate(db,userId,card,id); if(duplicate) throw new Error('收藏名單已有相同名片');
-  await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany,id,userId).run();
+  const selectedVersion = CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing.selected_version || 'standard');
+  const versions = normaliseVersions(payload.versions, existing);
+  const chatAltText = text(payload.chatAltText || existing.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, 300);
+  await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,selected_version=?,versions_json=?,chat_alt_text=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany,selectedVersion,JSON.stringify(versions),chatAltText,id,userId).run();
   return rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first());
 }
 
@@ -173,7 +219,8 @@ export async function getSharedContact(db,rawToken) {
   const row=await sharedContactRow(db,rawToken);
   if(!row)return null;
   // 僅以明確 allowlist 輸出；私人備註、收藏者、來源、內部 ID 與時間均不公開。
-  return { displayName:row.display_name,englishName:row.english_name,companyName:row.company_name,jobTitle:row.job_title,department:row.department,mobile:row.mobile,companyPhone:row.company_phone,email:row.email,websiteUrl:row.website_url,lineUrl:row.line_url,address:row.address,serviceDescription:row.service_description,hasImage:Boolean(row.front_r2_key) };
+  const versions = parseVersions(row); const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard'; const selected = versions[selectedVersion];
+  return { displayName:row.display_name,englishName:row.english_name,companyName:row.company_name,jobTitle:row.job_title,department:row.department,mobile:row.mobile,companyPhone:row.company_phone,email:row.email,websiteUrl:row.website_url,lineUrl:row.line_url,address:row.address,serviceDescription:row.service_description,chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT,selectedVersion,versions,coverUrl:selected.coverUrl,buttons:selected.buttons,hasImage:Boolean(row.front_r2_key) };
 }
 
 export async function serveSharedContactImage(db,bucket,request,rawToken) {
