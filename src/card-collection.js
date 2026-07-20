@@ -86,6 +86,7 @@ function bytesToBase64(buffer) {
 }
 
 const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
+const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
 
 async function recognizeWithOpenAI(apiKey, model, images) {
   const content = [{ type:'input_text', text:'辨識這張商務名片。只擷取畫面中可確認的文字，不猜測；無法確認的欄位填空字串。若不是名片，isBusinessCard=false。繁體中文內容保留原文。note 僅放無法歸類但有價值的名片文字。' }];
@@ -96,6 +97,45 @@ async function recognizeWithOpenAI(apiKey, model, images) {
   const outputText = result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type === 'output_text')?.text;
   if (!outputText) throw new Error('AI 未回傳名片辨識結果');
   return JSON.parse(outputText);
+}
+
+
+// 使用 Responses 的 web_search 工具，只把 OCR／人工校正過的公開欄位送去查找。
+// 回傳候選文案而非直接寫入，最後仍由使用者選取後才保存至數位名片。
+export async function expandContactContent(db, userId, id, apiKey, model) {
+  if (!apiKey) throw new Error('AI 擴寫尚未設定 API 金鑰');
+  const row = await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id, userId).first();
+  if (!row) throw new Error('找不到收藏名片');
+  const card = rowToCard(row);
+  const facts = {
+    name: card.displayName,
+    company: card.companyName,
+    title: card.jobTitle,
+    department: card.department,
+    website: card.websiteUrl,
+    line: card.lineUrl,
+    address: card.address,
+    existingDescription: card.serviceDescription,
+  };
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method:'POST',
+    headers:{ authorization:`Bearer ${apiKey}`, 'content-type':'application/json' },
+    body:JSON.stringify({
+      model:model || 'gpt-5.6-terra',
+      reasoning:{ effort:'low' },
+      tools:[{ type:'web_search' }],
+      input:[{ role:'user', content:`你是繁體中文商務名片文案助手。請根據下列名片已確認欄位搜尋公開網路資料，再產出 3 至 5 條可放在數位名片「內容區」的候選文字。\n\n已確認資料：${JSON.stringify(facts)}\n\n規則：\n1. 每條 35 到 90 個繁體中文字，語氣專業、客觀、可直接顯示。\n2. 只能描述可由名片資料或搜尋結果合理支持的服務、定位或特色；不確定時保持保守，不捏造獎項、年資、價格、合作或保證。\n3. 不要寫電話、地址、網址、LINE ID、emoji、標題或條列符號。\n4. 不得包含醫療、投資、法律等結果保證。\n5. 只回傳 JSON。` }],
+      text:{ format:{ type:'json_schema', name:'business_card_content_suggestions', strict:true, schema:CONTENT_EXPANSION_SCHEMA } },
+    }),
+  });
+  const result = await response.json().catch(()=>({}));
+  if (!response.ok) throw new Error(result?.error?.message || 'AI 擴寫暫時無法使用');
+  const outputText = result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type === 'output_text')?.text;
+  if (!outputText) throw new Error('AI 未回傳內容建議');
+  const parsed = JSON.parse(outputText);
+  const items = Array.isArray(parsed.items) ? parsed.items.map((item)=>text(item, 200)).filter(Boolean).slice(0,5) : [];
+  if (items.length < 3) throw new Error('AI 未產生足夠的內容建議');
+  return { items };
 }
 
 export async function createImport(db, bucket, userId, form) {
