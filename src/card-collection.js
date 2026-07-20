@@ -43,7 +43,10 @@ function parseVersions(row = {}) {
   }));
 }
 function normaliseVersions(value, row = {}) {
-  return parseVersions({ ...row, versions_json:JSON.stringify(value && typeof value === 'object' ? value : {}) });
+  const source = rawVersions(row);
+  const normalized = parseVersions({ ...row, versions_json:JSON.stringify(value && typeof value === 'object' ? value : {}) });
+  if (source._crmInsights) normalized._crmInsights = source._crmInsights;
+  return normalized;
 }
 export const normalizePhone = (value) => text(value, 60).replace(/[^0-9+]/g, '').replace(/^\+8860?/, '0');
 export const normalizeEmail = (value) => text(value, 320).toLowerCase();
@@ -59,12 +62,24 @@ function cleanCard(input = {}) {
   return card;
 }
 
+function rawVersions(row = {}) {
+  try { return JSON.parse(row.versions_json || '{}') || {}; } catch { return {}; }
+}
+function insightMeta(row = {}) {
+  const value = rawVersions(row)._crmInsights || {};
+  return {
+    status:['queued','processing','ready','failed'].includes(value.status) ? value.status : '',
+    cards:value.cards && typeof value.cards === 'object' ? value.cards : {},
+    updatedAt:text(value.updatedAt, 80),
+    error:text(value.error, 180),
+  };
+}
 function rowToCard(row) {
   if (!row) return null;
   const versions = parseVersions(row);
   const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard';
   const selected = versions[selectedVersion];
-  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), createdAt:row.created_at, updatedAt:row.updated_at };
+  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), aiInsights:insightMeta(row), createdAt:row.created_at, updatedAt:row.updated_at };
 }
 
 async function findDuplicate(db, ownerId, card, excludedId = '') {
@@ -87,6 +102,8 @@ function bytesToBase64(buffer) {
 
 const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
 const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
+const CRM_INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
+const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, required:CRM_INSIGHT_KEYS, properties:Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,{type:'string'}])) };
 
 async function recognizeWithOpenAI(apiKey, model, images) {
   const content = [{ type:'input_text', text:'辨識這張商務名片。只擷取畫面中可確認的文字，不猜測；無法確認的欄位填空字串。若不是名片，isBusinessCard=false。繁體中文內容保留原文。note 僅放無法歸類但有價值的名片文字。' }];
@@ -136,6 +153,76 @@ export async function expandContactContent(db, userId, id, apiKey, model) {
   const items = Array.isArray(parsed.items) ? parsed.items.map((item)=>text(item, 200)).filter(Boolean).slice(0,5) : [];
   if (items.length < 3) throw new Error('AI 未產生足夠的內容建議');
   return { items };
+}
+
+
+async function generateCrmInsights(apiKey, model, card) {
+  const facts = { name:card.displayName, company:card.companyName, title:card.jobTitle, department:card.department, service:card.serviceDescription, note:card.note, address:card.address };
+  const response = await fetch('https://api.openai.com/v1/responses', {
+    method:'POST',
+    headers:{ authorization:`Bearer ${apiKey}`, 'content-type':'application/json' },
+    body:JSON.stringify({
+      model:model || 'gpt-5.6-terra', reasoning:{effort:'low'}, max_output_tokens:900,
+      input:[{ role:'user', content:`你是繁體中文 CRM 助手。依下列「名片上可確認的公開文字」產出五項 CRM 溝通標籤。\n\n${JSON.stringify(facts)}\n\n規則：\n- 每項 45 到 90 字，專業、溫和，供業務跟進參考。\n- 個性只能描述「可能的溝通風格」，不可當作心理診斷。\n- 興趣若名片沒有依據，請寫「可於後續互動補充興趣與關注議題」。\n- 財富不得推論財務狀況、收入或投資能力；僅描述可能的商務價值取向。\n- 健康不得推論健康狀態；僅給工作節奏與自我照顧提醒。\n- 事業聚焦專業定位、合作切入點與跟進方向。\n- 不得捏造事實、獎項、客戶、年資或保證。只回傳 JSON。` }],
+      text:{format:{type:'json_schema',name:'crm_five_insights',strict:true,schema:CRM_INSIGHTS_SCHEMA}},
+    }),
+  });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(result?.error?.message || 'AI 五大標籤暫時無法使用');
+  const outputText=result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type==='output_text')?.text;
+  if(!outputText)throw new Error('AI 未回傳五大標籤');
+  const parsed=JSON.parse(outputText);
+  return Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,text(parsed[key],220)]));
+}
+function withInsightMeta(row, patch) {
+  const source=rawVersions(row);
+  source._crmInsights={...insightMeta(row),...patch,updatedAt:new Date().toISOString()};
+  return JSON.stringify(source);
+}
+export async function submitImportInBackground(db, bucket, userId, eventId, apiKey, model) {
+  if(!apiKey)throw new Error('名片 AI 辨識尚未設定 API 金鑰');
+  const event=await db.prepare('SELECT * FROM card_import_events WHERE id=? AND scanner_user_id=?').bind(eventId,userId).first();
+  if(!event)throw new Error('找不到這次名片掃描');
+  if(event.contact_card_id) {
+    const card=await db.prepare('SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=?').bind(event.contact_card_id,userId).first();
+    return {card:rowToCard(card),existing:true};
+  }
+  const id=newId('contact');
+  const placeholderVersions=JSON.stringify({_crmInsights:{status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''}});
+  await db.prepare(`INSERT INTO contact_cards (id,scanner_user_id,source_event_id,display_name,front_r2_key,front_content_type,versions_json)
+    VALUES (?,?,?,?,?,?,?)`).bind(id,userId,eventId,'名片 AI 分析中',event.front_r2_key,event.front_content_type,placeholderVersions).run();
+  await db.prepare("UPDATE card_import_events SET status='queued', contact_card_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id,eventId).run();
+  const card=await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first();
+  return {card:rowToCard(card),existing:false};
+}
+export async function processImportInBackground(db, bucket, userId, eventId, apiKey, model) {
+  const event=await db.prepare('SELECT * FROM card_import_events WHERE id=? AND scanner_user_id=?').bind(eventId,userId).first();
+  if(!event?.contact_card_id)return;
+  const contact=await db.prepare('SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=?').bind(event.contact_card_id,userId).first();
+  if(!contact)return;
+  await db.batch([
+    db.prepare("UPDATE card_import_events SET status='processing', updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId),
+    db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(contact,{status:'processing',error:''}),contact.id),
+  ]);
+  try {
+    const images=[];
+    for(const key of [event.front_r2_key,event.back_r2_key].filter(Boolean)) { const object=await bucket.get(key); if(object)images.push({type:object.httpMetadata?.contentType || event.front_content_type || 'image/webp',bytes:await object.arrayBuffer()}); }
+    const result=await recognizeWithOpenAI(apiKey,model,images);
+    if(!result.isBusinessCard)throw new Error('這張圖片看起來不是名片，請重新拍攝');
+    const card=cleanCard(result);
+    const insights=await generateCrmInsights(apiKey,model,card);
+    const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
+    await db.batch([
+      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'ready',cards:insights,error:''}),contact.id,userId),
+      db.prepare("UPDATE card_import_events SET status='created',ocr_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(result),eventId),
+    ]);
+  } catch(error) {
+    await db.batch([
+      db.prepare("UPDATE card_import_events SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId),
+      db.prepare("UPDATE contact_cards SET display_name=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind('名片分析未完成',withInsightMeta(contact,{status:'failed',error:error.message || '分析失敗'}),contact.id),
+    ]);
+    console.error('Background card analysis failed',error);
+  }
 }
 
 export async function createImport(db, bucket, userId, form) {
