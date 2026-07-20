@@ -50,6 +50,10 @@ const cardShareModeFromLocation = () => {
   try { return new URL(liffState, location.origin).searchParams.get("share") === "1"; }
   catch { return false; }
 };
+const pendingCollectedShareFromStorage = () => {
+  try { return JSON.parse(sessionStorage.getItem("mirabeauty_pending_collected_share") || "null"); }
+  catch { return null; }
+};
 const state = {
   config: null,
   token: localStorage.getItem("mirabeauty_session") || "",
@@ -63,6 +67,7 @@ const state = {
   cardShareId: cardShareIdFromLocation() || sessionStorage.getItem("mirabeauty_card_share_id") || "",
   cardShareMode: cardShareModeFromLocation() || sessionStorage.getItem("mirabeauty_card_share_mode") === "1",
   pendingCardShareId: sessionStorage.getItem("mirabeauty_pending_card_share_id") || "",
+  pendingCollectedShare: pendingCollectedShareFromStorage(),
   courseView: "catalog",
   cardVersion: "",
   daily: null,
@@ -274,6 +279,7 @@ async function render() {
   // 已有工作階段的會員再次從邀約 QR 進站時，保留單一步驟讓他確認推薦關係；
   // 不自動重導，避免某些 LINE WebView 停在載入畫面。
   if (state.token && state.invite) return renderLogin();
+  if (state.pendingCollectedShare?.id) return resumePendingCollectedShare();
   if (state.pendingCardShareId) return resumePendingCardShare();
   if (state.cardShareMode && state.cardShareId) return shareCardFromHeader();
   if (state.publicCard) return publicCard();
@@ -714,6 +720,58 @@ function collectedCardFlex(card, shareUrl, hasImage = false) {
     footer:{ type:"box", layout:"vertical", spacing:"sm", contents:actions.map((item) => button(item.label, item.uri, item.color)) },
   };
 }
+function rememberPendingCollectedShare(card, current = card) {
+  state.pendingCollectedShare = { id:card.id, hasImage:Boolean(card.hasImage), card:{ ...current, note:"" } };
+  sessionStorage.setItem("mirabeauty_pending_collected_share", JSON.stringify(state.pendingCollectedShare));
+}
+function clearPendingCollectedShare() {
+  state.pendingCollectedShare = null;
+  sessionStorage.removeItem("mirabeauty_pending_collected_share");
+  sessionStorage.removeItem("mirabeauty_collected_share_reauth");
+}
+async function beginCollectedCardShare(card, current) {
+  rememberPendingCollectedShare(card, current);
+  await resumePendingCollectedShare();
+}
+async function resumePendingCollectedShare() {
+  const pending = state.pendingCollectedShare;
+  if (!pending?.id) return;
+  let keepPending = false;
+  try {
+    await initLiffOnce();
+    if (!liff.isLoggedIn()) {
+      keepPending = true;
+      markLiffLoginPending();
+      liff.login({ redirectUri:liffLoginRedirectUrl() });
+      return;
+    }
+    if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("ShareTargetPicker is not allowed in this LIFF app");
+    const result = await api(`/v1/card-collection/${encodeURIComponent(pending.id)}/share`, { method:"POST", body:"{}" });
+    const card = pending.card || {};
+    const shared = await liff.shareTargetPicker([{
+      type:"flex",
+      altText:`電子名片｜${String(card.displayName || result.share.displayName || "未命名名片").slice(0,100)}`,
+      contents:collectedCardFlex(card, result.share.url, pending.hasImage),
+    }]);
+    if (shared !== false) alert("電子名片已分享");
+  } catch (error) {
+    const permissionError = /not allowed|not available|shareTargetPicker/i.test(String(error?.message || ""));
+    const alreadyRetried = sessionStorage.getItem("mirabeauty_collected_share_reauth") === "1";
+    if (permissionError && !alreadyRetried) {
+      keepPending = true;
+      sessionStorage.setItem("mirabeauty_collected_share_reauth", "1");
+      markLiffLoginPending();
+      alert("LINE 分享權限已更新，將重新登入並自動繼續分享。");
+      try { if (liff.isLoggedIn()) liff.logout(); } catch {}
+      location.replace(cleanLiffRedirectUrl());
+      return;
+    }
+    if (permissionError) alert("仍無法使用 LINE 分享。請確認 LIFF 已啟用 Share Target Picker，並已同意其使用條款。");
+    else if (!/cancel/i.test(String(error?.message || ""))) alert(error.message || "名片分享失敗");
+  } finally {
+    if (!keepPending) clearPendingCollectedShare();
+  }
+}
 async function compressCardImage(file) {
   if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
   const source = await createImageBitmap(file);
@@ -1141,7 +1199,7 @@ async function showContactEditor(card) {
   const showDigital=async()=>{
     const panel=$("#collectionDigitalPanel");panel.innerHTML=digitalCardMarkup(readCollectionForm());
     if(card.hasImage){digitalImageUrl=digitalImageUrl||await authorizedImageUrl(card);const image=$("#collectedDigitalImage");if(image&&digitalImageUrl)image.src=digitalImageUrl;}
-    $("#shareCollectedCard").onclick=async()=>{const button=$("#shareCollectedCard");try{await withActionFeedback(button,async()=>{const current=readCollectionForm();const result=await api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"POST",body:"{}"});await initLiffOnce();if(!liff.isLoggedIn())throw new Error("請先從 LINE 登入會員中心，再分享電子名片");if(!liff.isApiAvailable?.("shareTargetPicker"))throw new Error("目前的 LINE 環境不支援名片分享，請從 LINE 開啟會員中心，並確認 LIFF 已啟用 shareTargetPicker");const shared=await liff.shareTargetPicker([{type:"flex",altText:`電子名片｜${String(current.displayName||"未命名名片").slice(0,100)}`,contents:collectedCardFlex(current,result.share.url,card.hasImage)}]);if(shared===false){const cancelled=new Error("已取消分享");cancelled.name="AbortError";throw cancelled;}alert("電子名片已分享");},{busy:"開啟名片分享中…",success:"分享完成"})}catch(error){if(error?.name!=="AbortError")alert(error.message||"名片分享失敗")}};
+    $("#shareCollectedCard").onclick=async()=>{const button=$("#shareCollectedCard");try{await withActionFeedback(button,()=>beginCollectedCardShare(card,readCollectionForm()),{busy:"開啟名片分享中…",success:"分享完成"})}catch(error){alert(error.message||"名片分享失敗")}};
     $("#stopCollectedCardShare").onclick=async()=>{if(!confirm("確定停止這張名片目前的公開分享？舊網址將立即失效。"))return;const button=$("#stopCollectedCardShare");try{await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"DELETE"}),{busy:"停止分享中…",success:"已停止分享"})}catch(error){alert(error.message||"停止分享失敗")}};
   };
   document.querySelectorAll("[data-collection-tab]").forEach(button=>button.onclick=async()=>{const digital=button.dataset.collectionTab==="digital";document.querySelectorAll("[data-collection-tab]").forEach(item=>item.classList.toggle("active",item===button));$("#collectionContentPanel").classList.toggle("hidden",digital);$("#collectionDigitalPanel").classList.toggle("hidden",!digital);if(digital)await showDigital();});
