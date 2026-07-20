@@ -103,6 +103,7 @@ function bytesToBase64(buffer) {
 const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
 const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
 const CRM_INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
+const CRM_INSIGHT_SOURCE_KEYS = ['displayName','companyName','jobTitle','department','serviceDescription','note','address'];
 const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, required:CRM_INSIGHT_KEYS, properties:Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,{type:'string'}])) };
 
 async function recognizeWithOpenAI(apiKey, model, images) {
@@ -226,12 +227,11 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
 }
 
 
-export async function queueCrmInsightsBackfill(db, userId, limit = 20) {
-  const result=await db.prepare("SELECT * FROM contact_cards WHERE scanner_user_id=? AND status='active' ORDER BY updated_at DESC LIMIT 100").bind(userId).all();
-  const candidates=(result.results || []).filter((row)=>insightMeta(row).status !== 'ready').slice(0, Math.max(1,Math.min(Number(limit) || 20,20)));
-  if(!candidates.length)return {queued:0,ids:[]};
-  await db.batch(candidates.map((row)=>db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(withInsightMeta(row,{status:'queued',error:''}),row.id,userId)));
-  return {queued:candidates.length,ids:candidates.map((row)=>row.id)};
+export async function queueContactCrmInsights(db, userId, id) {
+  const row=await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id,userId).first();
+  if(!row || ['queued','processing'].includes(insightMeta(row).status))return false;
+  await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=? AND status='active'").bind(withInsightMeta(row,{status:'queued',cards:{},error:''}),id,userId).run();
+  return true;
 }
 export async function processContactInsightsInBackground(db, userId, id, apiKey, model) {
   const row=await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id,userId).first();
@@ -249,8 +249,14 @@ export async function processContactInsightsInBackground(db, userId, id, apiKey,
 
 
 export async function queueSystemCrmInsightBackfill(db, limit = 6) {
-  const result=await db.prepare("SELECT * FROM contact_cards WHERE status='active' ORDER BY updated_at ASC LIMIT 100").all();
-  const candidates=(result.results || []).filter((row)=>insightMeta(row).status !== 'ready').slice(0, Math.max(1,Math.min(Number(limit) || 6,6)));
+  const cappedLimit=Math.max(1,Math.min(Number(limit) || 6,20));
+  const result=await db.prepare(`SELECT * FROM contact_cards
+    WHERE status='active' AND (
+      COALESCE(json_extract(versions_json, '$._crmInsights.status'),'') NOT IN ('ready','queued','processing')
+      OR (json_extract(versions_json, '$._crmInsights.status')='queued' AND updated_at <= datetime('now','-10 minutes'))
+      OR (json_extract(versions_json, '$._crmInsights.status')='processing' AND updated_at <= datetime('now','-30 minutes'))
+    ) ORDER BY updated_at ASC LIMIT ?`).bind(cappedLimit).all();
+  const candidates=result.results || [];
   if(!candidates.length)return {queued:0,tasks:[]};
   await db.batch(candidates.map((row)=>db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(withInsightMeta(row,{status:'queued',error:''}),row.id,row.scanner_user_id)));
   return {queued:candidates.length,tasks:candidates.map((row)=>({id:row.id,userId:row.scanner_user_id}))};
@@ -309,8 +315,9 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   const id = duplicate?.id || newId('contact');
   const sourceKey = event.front_r2_key;
   const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
-  if (duplicate) await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,id,userId).run();
-  else await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_event_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,note,normalized_mobile,normalized_email,normalized_name_company,front_r2_key,front_content_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,eventId,...values,sourceKey,event.front_content_type).run();
+  const queuedVersions=withInsightMeta(duplicate || {},{status:'queued',cards:{},error:''});
+  if (duplicate) await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,queuedVersions,id,userId).run();
+  else await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_event_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,note,normalized_mobile,normalized_email,normalized_name_company,front_r2_key,front_content_type,versions_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,eventId,...values,sourceKey,event.front_content_type,queuedVersions).run();
   if (event.back_r2_key) await bucket.delete(event.back_r2_key);
   if (duplicate && sourceKey) await bucket.delete(sourceKey);
   await db.prepare('UPDATE card_import_events SET status=?, contact_card_id=?, back_r2_key=\'\', updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(duplicate?'updated':'created',id,eventId).run();
@@ -328,6 +335,9 @@ export async function updateContact(db,userId,id,payload) {
   const card=cleanCard({...rowToCard(existing),...payload}); const duplicate=await findDuplicate(db,userId,card,id); if(duplicate) throw new Error('收藏名單已有相同名片');
   const selectedVersion = CARD_VERSIONS.includes(payload.selectedVersion) ? payload.selectedVersion : (existing.selected_version || 'standard');
   const versions = normaliseVersions(payload.versions, existing);
+  const existingCard=rowToCard(existing);
+  const insightInputChanged=CRM_INSIGHT_SOURCE_KEYS.some((key)=>text(existingCard[key],FIELD_LIMITS[key] || 1000) !== text(card[key],FIELD_LIMITS[key] || 1000));
+  if(insightInputChanged)versions._crmInsights={status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''};
   const chatAltText = text(payload.chatAltText || existing.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, 300);
   await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,selected_version=?,versions_json=?,chat_alt_text=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany,selectedVersion,JSON.stringify(versions),chatAltText,id,userId).run();
   return rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first());
@@ -342,7 +352,7 @@ export async function collectPublicCard(db,userId,personalCardId) {
   const existing=await db.prepare("SELECT * FROM contact_cards WHERE scanner_user_id=? AND source_personal_card_id=? AND status='active'").bind(userId,personalCardId).first(); if(existing)return {card:rowToCard(existing),duplicate:true};
   const card=cleanCard({displayName:source.display_name,englishName:source.english_name,companyName:source.company_name,jobTitle:source.job_title,department:source.department,mobile:source.mobile,companyPhone:source.company_phone,email:source.email,websiteUrl:source.website_url,lineUrl:source.line_url,address:source.address,serviceDescription:source.service_description});
   const duplicate=await findDuplicate(db,userId,card); if(duplicate)return {card:rowToCard(duplicate),duplicate:true};
-  const id=newId('contact'); await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_type,source_personal_card_id,bound_user_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,normalized_mobile,normalized_email,normalized_name_company) VALUES (?,?,\'public_card\',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,personalCardId,source.platform_user_id,card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany).run(); return {card:rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first()),duplicate:false};
+  const id=newId('contact'); const versionsJson=withInsightMeta({},{status:'queued',cards:{},error:''}); await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_type,source_personal_card_id,bound_user_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,normalized_mobile,normalized_email,normalized_name_company,versions_json) VALUES (?,?,\'public_card\',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,personalCardId,source.platform_user_id,card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany,versionsJson).run(); return {card:rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first()),duplicate:false};
 }
 
 function randomShareToken() {
