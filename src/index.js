@@ -59,6 +59,8 @@ import {
   listContacts,
   getSharedContact,
   recognizeImport,
+  submitImportInBackground,
+  processImportInBackground,
   revokeContactShare,
   serveContactImage,
   serveSharedContactImage,
@@ -198,7 +200,7 @@ function courseCheckinCompactLiffHtml(env, origin) {
 </script></body></html>`,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store"}});
 }
 
-async function app(request, env) {
+async function app(request, env, ctx) {
   const url = new URL(request.url);
   const publicCardPath = url.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
   if (request.method === "GET" && publicCardPath) {
@@ -417,6 +419,20 @@ async function app(request, env) {
     try {
       return json({ success: true, import: await createImport(env.DB, env.MEDIA, member.userId, await request.formData()) }, 201);
     } catch (error) { return badRequest(error.message || "名片圖片上傳失敗"); }
+  }
+
+  const submitBackgroundImport = url.pathname.match(/^\/v1\/card-collection\/imports\/([^/]+)\/submit$/);
+  if (request.method === "POST" && submitBackgroundImport) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success:false, error:"Unauthorized" }, 401);
+    try {
+      const eventId=decodeURIComponent(submitBackgroundImport[1]);
+      const openAIKey=await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+      const result=await submitImportInBackground(env.DB, env.MEDIA, member.userId, eventId, openAIKey, env.OPENAI_CARD_MODEL);
+      const task=processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, openAIKey, env.OPENAI_CARD_MODEL);
+      if (ctx?.waitUntil) ctx.waitUntil(task); else task.catch((error)=>console.error("Background card analysis failed",error));
+      return json({success:true,...result,analysis:"queued"},202);
+    } catch(error) { return badRequest(error.message || "名片送出失敗"); }
   }
 
   const recognizeCardImport = url.pathname.match(/^\/v1\/card-collection\/imports\/([^/]+)\/recognize$/);
@@ -1340,11 +1356,11 @@ async function app(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === "OPTIONS")
       return new Response(null, { headers: { allow: "GET, HEAD, POST, PUT, DELETE, OPTIONS" } });
     try {
-      return await app(request, env);
+      return await app(request, env, ctx);
     } catch (error) {
       console.error("Unhandled request error", error);
       return json({ success: false, error: "Internal Server Error" }, 500);
