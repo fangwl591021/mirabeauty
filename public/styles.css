@@ -56,6 +56,9 @@
 .line-source-editor-field input,.line-source-editor-field textarea,.line-source-editor-field select{width:100%;box-sizing:border-box;border:1px solid #d8dfe9;border-radius:9px;padding:10px;background:#fff;color:#28364d;font:inherit}
 .line-source-editor-field textarea{resize:vertical;line-height:1.55}
 .line-source-editor-note{margin:0;color:#765e6a;font-size:13px;line-height:1.6}
+.line-source-suggestion-list{display:grid;gap:9px}
+.line-source-suggestion-list button{width:100%;padding:12px 13px;border:1px solid #ead0d9;border-radius:10px;background:#fff8fa;color:#513642;font:14px/1.6 inherit;text-align:left;cursor:pointer}
+.line-source-suggestion-list button:hover,.line-source-suggestion-list button:focus-visible{border-color:#bd657d;background:#fbecef;outline:none}
 .line-source-editor-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .line-source-editor-primary,.line-source-editor-danger,.line-source-editor-actions>button:not(.line-source-editor-danger){min-height:42px;border:0;border-radius:9px;font:700 14px inherit;cursor:pointer}
 .line-source-editor-primary{background:#b96072;color:#fff}
