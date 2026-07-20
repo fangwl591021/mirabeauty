@@ -225,6 +225,28 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
   }
 }
 
+
+export async function queueCrmInsightsBackfill(db, userId, limit = 20) {
+  const result=await db.prepare("SELECT * FROM contact_cards WHERE scanner_user_id=? AND status='active' ORDER BY updated_at DESC LIMIT 100").bind(userId).all();
+  const candidates=(result.results || []).filter((row)=>insightMeta(row).status !== 'ready').slice(0, Math.max(1,Math.min(Number(limit) || 20,20)));
+  if(!candidates.length)return {queued:0,ids:[]};
+  await db.batch(candidates.map((row)=>db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(withInsightMeta(row,{status:'queued',error:''}),row.id,userId)));
+  return {queued:candidates.length,ids:candidates.map((row)=>row.id)};
+}
+export async function processContactInsightsInBackground(db, userId, id, apiKey, model) {
+  const row=await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id,userId).first();
+  if(!row)return;
+  await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'processing',error:''}),id).run();
+  try {
+    const card=rowToCard(row);
+    const cards=await generateCrmInsights(apiKey,model,card);
+    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'ready',cards,error:''}),id).run();
+  } catch(error) {
+    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'failed',error:error.message || '分析失敗'}),id).run();
+    console.error('Background CRM insight analysis failed',error);
+  }
+}
+
 export async function createImport(db, bucket, userId, form) {
   const files = ['front','back'].map((key)=>form.get(key)).filter((file)=>file instanceof File && file.size);
   if (!files.length || files.length > 2) throw new Error('請選擇名片正面，最多可加一張背面');
