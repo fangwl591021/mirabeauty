@@ -63,6 +63,7 @@ import {
   processImportInBackground,
   queueCrmInsightsBackfill,
   processContactInsightsInBackground,
+  queueSystemCrmInsightBackfill,
   revokeContactShare,
   serveContactImage,
   serveSharedContactImage,
@@ -458,18 +459,6 @@ async function app(request, env, ctx) {
     } catch (error) {
       return json({ success: false, error: error.message || "名片儲存失敗", code: error.code || "save_failed", duplicate: error.duplicate || null }, error.code ? 409 : 400);
     }
-  }
-
-  if (request.method === "POST" && url.pathname === "/v1/card-collection/insights/backfill") {
-    const member=await currentMember(request,env);
-    if(!member)return json({success:false,error:"Unauthorized"},401);
-    try {
-      const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
-      const queued=await queueCrmInsightsBackfill(env.DB,member.userId,20);
-      const work=(async()=>{ for(const id of queued.ids) await processContactInsightsInBackground(env.DB,member.userId,id,openAIKey,env.OPENAI_CARD_MODEL); })();
-      if(ctx?.waitUntil)ctx.waitUntil(work);else work.catch((error)=>console.error("CRM insight backfill failed",error));
-      return json({success:true,queued:queued.queued},202);
-    } catch(error){return badRequest(error.message || "五大標籤補齊失敗");}
   }
 
   const contactCardMatch = url.pathname.match(/^\/v1\/card-collection\/([^/]+)$/);
@@ -1369,6 +1358,18 @@ async function app(request, env, ctx) {
   return json({ success: false, error: "Not Found" }, 404);
 }
 
+
+async function runSystemCrmInsightBackfill(env) {
+  try {
+    const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
+    if(!openAIKey)return;
+    const queued=await queueSystemCrmInsightBackfill(env.DB,6);
+    for(const task of queued.tasks) await processContactInsightsInBackground(env.DB,task.userId,task.id,openAIKey,env.OPENAI_CARD_MODEL);
+  } catch(error) {
+    console.error("Scheduled CRM insight backfill failed",error);
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS")
@@ -1379,5 +1380,8 @@ export default {
       console.error("Unhandled request error", error);
       return json({ success: false, error: "Internal Server Error" }, 500);
     }
+  },
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runSystemCrmInsightBackfill(env));
   },
 };
