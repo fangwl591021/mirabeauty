@@ -1319,7 +1319,7 @@ async function crmInsightSection(card) {
   return `<section class="crm-insights"><div class="crm-insights-heading"><h3>✧ 五大標籤</h3><span>依名片公開文字分析，供 CRM 溝通與跟進參考</span></div><div class="crm-insights-grid">${cards}</div></section>`;
 }
 
-function showContactEditor(card) {
+async function showContactEditor(card) {
   const view = state.collectionCardView || "contact";
   const selected = state.collectionCardVersion && cardVersionMeta[state.collectionCardVersion]
     ? { id:state.collectionCardVersion, ...(card.versions?.[state.collectionCardVersion] || {}), ...cardVersionMeta[state.collectionCardVersion] }
