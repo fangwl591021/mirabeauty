@@ -1242,15 +1242,24 @@ async function showContactEditor(card) {
   $("#showMyCardQr").onclick=()=>alert("公開連結會在分享電子名片時建立。");
 }
 
+function renderPublicEcard(card, versionId) {
+  const selectedId = cardVersionMeta[versionId] ? versionId : (card.selectedVersion || "standard");
+  const viewed = cardWithVersion(card, selectedId);
+  const ratio = selectedId === "full" ? "2/3" : selectedId === "square" ? "1/1" : "20/13";
+  const actions = (viewed.buttons || []).filter((item) => item?.enabled !== false && item.label && item.value).slice(0, 4);
+  const title = viewed.versionTitle || viewed.displayName || "未命名名片";
+  const description = viewed.serviceDescription || "";
+  return { selectedId, html:`<section class="line-source-public"><div class="line-source-preview-card"><div class="line-source-preview-share">分享</div>${viewed.coverUrl || card.imageUrl ? `<div class="line-source-preview-cover"><img style="aspect-ratio:${ratio}" src="${esc(viewed.coverUrl || card.imageUrl)}" alt="${esc(title)} 的名片"></div>` : `<div class="line-source-preview-placeholder" style="aspect-ratio:${ratio}">${esc(title.slice(0,1))}</div>`}<div class="line-source-preview-body"><div class="line-source-public-title">${esc(title)}</div>${description ? `<div class="line-source-public-description" style="text-align:${esc(viewed.descriptionTextAlign || viewed.serviceTextAlign || "left")}">${esc(description)}</div>` : ""}</div>${actions.length ? `<div class="line-source-preview-footer">${actions.map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""} style="background:${esc(item.color || "#B96072")}">${esc(item.label)}</a>`).join("")}</div>` : ""}</div></section>` };
+}
+
 async function publicSharedContact(){
   try {
-    const result=await api(`/v1/card-collection/shared/${encodeURIComponent(state.sharedContact)}`), card=result.card;
-    const renderVersion=(versionId)=>{
-      const selectedId=cardVersionMeta[versionId] ? versionId : (card.selectedVersion || "standard");
-      const viewed=cardWithVersion(card,selectedId), actions=(viewed.buttons || []).filter((item)=>item?.enabled !== false && item.label && item.value);
-      $("#app").innerHTML=`<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id,meta])=>`<button type="button" data-shared-contact-version="${id}" class="${id===selectedId?"active":""}">${meta.label}</button>`).join("")}</div>${viewed.coverUrl || card.imageUrl ? `<img class="public-card-cover public-card-cover-${esc(selectedId)}" src="${esc(viewed.coverUrl || card.imageUrl)}" alt="${esc(viewed.displayName)} 的電子名片">`:""}<section class="public-card-body"><h1>${esc(viewed.versionTitle || viewed.displayName)}</h1>${viewed.englishName?`<p class="muted">${esc(viewed.englishName)}</p>`:""}<h2>${esc(viewed.companyName)}</h2><p>${esc([viewed.jobTitle,viewed.department].filter(Boolean).join("｜"))}</p>${viewed.serviceDescription?`<p class="public-card-service" style="text-align:${esc(viewed.descriptionTextAlign || viewed.serviceTextAlign || "left")}">${esc(viewed.serviceDescription)}</p>`:""}${cardContactRows(viewed)}<div class="business-card-contact-actions">${actions.map(item=>`<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type)?'target="_blank" rel="noopener"':""}>${esc(item.label)}</a>`).join("")}</div><p class="collection-private-note">此電子名片由名片收藏者整理分享。</p><button class="btn alt" id="openSharedMemberHome">開啟 MiraBeauty 會員中心</button></section></section>`;
-      document.querySelectorAll("[data-shared-contact-version]").forEach((button)=>button.onclick=()=>renderVersion(button.dataset.sharedContactVersion));
-      $("#openSharedMemberHome").onclick=()=>{state.sharedContact="";history.replaceState({},"",location.pathname);render()};
+    const result = await api(`/v1/card-collection/shared/${encodeURIComponent(state.sharedContact)}`);
+    const card = result.card;
+    const renderVersion = (versionId) => {
+      const view = renderPublicEcard(card, versionId);
+      $("#app").innerHTML = `<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id,meta])=>`<button type="button" data-shared-contact-version="${id}" class="${id===view.selectedId?"active":""}">${meta.label}</button>`).join("")}</div>${view.html}</section>`;
+      document.querySelectorAll("[data-shared-contact-version]").forEach((button) => button.onclick = () => renderVersion(button.dataset.sharedContactVersion));
     };
     renderVersion(card.selectedVersion || "standard");
   } catch(error) { $("#app").innerHTML=`<section class="center">${esc(error.message||"分享名片不存在或已停止分享")}</section>`; }
@@ -1269,16 +1278,19 @@ async function publicCard() {
     const result = await api(`/v1/cards/${encodeURIComponent(state.publicCard)}/public`);
     const shared = result.card;
     const renderPublicVersion = (versionId) => {
-      const selectedId = cardVersionMeta[versionId] ? versionId : (shared.selectedVersion || "standard");
-      const viewed = cardWithVersion(shared, selectedId);
-      const actions = cardActionItems(viewed);
-      $("#app").innerHTML = `<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id, meta]) => `<button type="button" data-public-card-version="${id}" class="${id === selectedId ? "active" : ""}">${meta.label}</button>`).join("")}</div>${viewed.coverUrl ? `<a href="${FIXED_CARD_IMAGE_LINK}" target="_blank" rel="noopener"><img class="public-card-cover public-card-cover-${esc(selectedId)}" src="${esc(viewed.coverUrl)}" alt="${esc(viewed.displayName)} 的名片"></a>` : ""}<section class="public-card-body"><h1>${esc(viewed.versionTitle || viewed.displayName)}</h1>${viewed.englishName ? `<p class="muted">${esc(viewed.englishName)}</p>` : ""}<h2>${esc(viewed.companyName)}</h2><p>${esc([viewed.jobTitle,viewed.department].filter(Boolean).join("｜"))}</p>${viewed.serviceDescription ? `<p class="public-card-service" style="text-align:${esc(viewed.descriptionTextAlign || viewed.serviceTextAlign || "left")}">${esc(viewed.serviceDescription)}</p>` : ""}${cardContactRows(viewed)}<div class="business-card-contact-actions">${actions.map((item) => `<a href="${esc(item.value)}" ${item.type === "url" || item.type === "line" || item.type === "map" ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div>${state.token?`<button class="btn" id="collectPublicCard">收藏此名片</button>`:""}<button class="btn alt" id="openMemberHome">開啟 MiraBeauty 會員中心</button></section></section>`;
+      const view = renderPublicEcard(shared, versionId);
+      $("#app").innerHTML = `<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id, meta]) => `<button type="button" data-public-card-version="${id}" class="${id === view.selectedId ? "active" : ""}">${meta.label}</button>`).join("")}</div>${view.html}${state.token ? `<button class="btn public-card-collect" id="collectPublicCard">收藏此名片</button>` : ""}</section>`;
       document.querySelectorAll("[data-public-card-version]").forEach((button) => button.onclick = () => {
         state.publicCardVersion = button.dataset.publicCardVersion;
         renderPublicVersion(state.publicCardVersion);
       });
-      $("#collectPublicCard")?.addEventListener("click",async()=>{const button=$("#collectPublicCard");try{const collected=await withActionFeedback(button,()=>api(`/v1/cards/${encodeURIComponent(shared.id)}/collect`,{method:"POST",body:"{}"}),{busy:"收藏中…",success:"已收藏"});if(collected.duplicate)alert("這張名片已在收藏名單中");}catch(error){alert(error.message)}});
-      $("#openMemberHome").onclick = () => { state.publicCard = ""; state.publicCardVersion = ""; history.replaceState({}, "", location.pathname); render(); };
+      $("#collectPublicCard")?.addEventListener("click", async () => {
+        const button = $("#collectPublicCard");
+        try {
+          const collected = await withActionFeedback(button, () => api(`/v1/cards/${encodeURIComponent(shared.id)}/collect`, { method:"POST", body:"{}" }), {busy:"收藏中…",success:"已收藏"});
+          if (collected.duplicate) alert("這張名片已在收藏名單中");
+        } catch(error) { alert(error.message); }
+      });
     };
     renderPublicVersion(state.publicCardVersion || shared.selectedVersion || "standard");
   } catch (error) {
