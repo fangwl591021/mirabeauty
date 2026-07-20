@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check src/index.js && node --check src/auth.js && node --check src/member-repository.js && node --check src/points.js && node --check src/courses.js && node --check src/daily-ad.js && node --check src/wallet-qr.js && node --check src/rich-menu.js && node --check src/media-library.js && node --check src/card-collection.js && node --check src/openai-settings.js && node --check public/app.js && node --check public/admin.js"
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/member-repository.js && node --check src/points.js && node --check src/courses.js && node --check src/daily-ad.js && node --check src/wallet-qr.js && node --check src/rich-menu.js && node --check src/media-library.js && node --check src/card-collection.js && node --check src/member-crm-insights.js && node --check src/openai-settings.js && node --check public/app.js && node --check public/admin.js"
   },
   "devDependencies": {
     "wrangler": "^4.24.0"
