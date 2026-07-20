@@ -247,6 +247,15 @@ export async function processContactInsightsInBackground(db, userId, id, apiKey,
   }
 }
 
+
+export async function queueSystemCrmInsightBackfill(db, limit = 6) {
+  const result=await db.prepare("SELECT * FROM contact_cards WHERE status='active' ORDER BY updated_at ASC LIMIT 100").all();
+  const candidates=(result.results || []).filter((row)=>insightMeta(row).status !== 'ready').slice(0, Math.max(1,Math.min(Number(limit) || 6,6)));
+  if(!candidates.length)return {queued:0,tasks:[]};
+  await db.batch(candidates.map((row)=>db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(withInsightMeta(row,{status:'queued',error:''}),row.id,row.scanner_user_id)));
+  return {queued:candidates.length,tasks:candidates.map((row)=>({id:row.id,userId:row.scanner_user_id}))};
+}
+
 export async function createImport(db, bucket, userId, form) {
   const files = ['front','back'].map((key)=>form.get(key)).filter((file)=>file instanceof File && file.size);
   if (!files.length || files.length > 2) throw new Error('請選擇名片正面，最多可加一張背面');
