@@ -694,7 +694,6 @@ function collectedCardFlex(card, shareUrl, hasImage = false) {
     card.address ? `地址｜${clean(card.address, 160)}` : "",
   ].filter(Boolean).join("\n");
   const bodyContents = [
-    { type:"text", text:"電子名片", size:"xs", color:"#B96072", weight:"bold" },
     { type:"text", text:displayName, weight:"bold", size:"xl", color:"#2A2030", wrap:true, margin:"sm" },
     ...(card.englishName ? [{ type:"text", text:clean(card.englishName, 80), size:"sm", color:"#857581", wrap:true, margin:"xs" }] : []),
     ...(card.companyName ? [{ type:"text", text:clean(card.companyName, 120), weight:"bold", size:"md", color:"#493E48", wrap:true, margin:"md" }] : []),
@@ -971,7 +970,7 @@ function renderDigitalCardPreview(card, selected) {
 function lineSourceEcardEditor(card, selected, options = {}) {
   const version = cardWithVersion(card, selected.id);
   const shareTools = options.collection
-    ? `<div class="line-source-share"><p class="muted">收藏名片會使用同一組版型、裁切與按鈕設定。</p><button id="shareCollectedCard" type="button">分享電子名片</button><button id="stopCollectedCardShare" type="button">停止既有分享</button></div>`
+    ? `<div class="line-source-share"><p class="muted">收藏名片會使用同一組版型、裁切與按鈕設定。</p><button id="aiExpandContactContent" type="button">AI 擴寫內容</button><button id="shareCollectedCard" type="button">分享電子名片</button><button id="stopCollectedCardShare" type="button">停止既有分享</button></div>`
     : `<div class="line-source-share"><label>聊天室顯示文字<input id="cardChatAltText" maxlength="300" value="${esc(cardChatAltText(card))}"></label><button id="saveCardChatAltText" type="button">儲存顯示文字</button><input id="cardPublicUrl" readonly value="${esc(cardPublicUrl(card.id))}"><div id="cardPublicQr" class="qr"></div><button id="sharePersonalCard" type="button">分享名片</button><button id="sendPersonalCard" type="button">傳送至目前聊天室</button><button id="copyCardUrl" type="button">複製名片網址</button></div>`;
   return `<section id="my-ecard-edit-state" class="line-source-ecard line-source-ecard-canvas">
     <div class="line-source-ecard-top"><p>點擊名片中的封面、文字或按鈕即可直接編輯；每次確認會立即儲存。</p><div><button type="button" class="line-source-qr" id="showMyCardQr">顯示條碼</button></div></div>
@@ -990,6 +989,30 @@ function ensureLineSourceCardEditor() {
   $("#closeLineSourceEditor").onclick = () => modal.classList.remove("open");
   return modal;
 }
+async function openContactContentSuggestions(context) {
+  const modal = ensureLineSourceCardEditor(), title = $("#lineSourceEditorTitle"), body = $("#lineSourceEditorBody");
+  title.textContent = "AI 擴寫內容";
+  modal.classList.add("open");
+  body.innerHTML = `<p class="line-source-editor-note">正在依名片已確認文字與公開網路資料產生候選內容…</p>`;
+  try {
+    const result = await api(`/v1/card-collection/${encodeURIComponent(context.card.id)}/content-suggestions`, { method:"POST", body:"{}" });
+    body.innerHTML = `<p class="line-source-editor-note">選擇一條後會立即套用並儲存；不會覆蓋其他版型。</p><div class="line-source-suggestion-list">${result.items.map((item,index)=>`<button type="button" data-contact-content-suggestion="${index}">${esc(item)}</button>`).join("")}</div>`;
+    document.querySelectorAll("[data-contact-content-suggestion]").forEach((button) => button.onclick = async () => {
+      const item = result.items[Number(button.dataset.contactContentSuggestion)];
+      if (!item) return;
+      try {
+        $("#lineSourceDescription").value = item;
+        context.updatePreview();
+        await persistLineSourceCard(context);
+        modal.classList.remove("open");
+        alert("內容已套用並儲存");
+      } catch (error) { alert(error.message || "內容儲存失敗"); }
+    });
+  } catch (error) {
+    body.innerHTML = `<p class="line-source-editor-note">${esc(error.message || "AI 擴寫失敗")}</p>`;
+  }
+}
+
 async function persistLineSourceCard(context) {
   const { card, selected, buttons } = context;
   const id = selected.id;
@@ -1213,6 +1236,7 @@ async function showContactEditor(card) {
   if (!selected.coverUrl && card.hasImage) { const source=await authorizedImageUrl(card); if(source) $("#my-v1-img-url").value=source; }
   updatePreview();
   $("#lineSourceImageFile").onchange=async()=>{try{const file=$("#lineSourceImageFile").files?.[0];if(file)await openCardCropper(file,selected.id,async()=>persistLineSourceCard(editorContext));}catch(error){alert(error.message)}};
+  $("#aiExpandContactContent").onclick=()=>openContactContentSuggestions(editorContext);
   $("#shareCollectedCard").onclick=async()=>{try{await beginCollectedCardShare(card,card);}catch(error){alert(error.message||"名片分享失敗")}};
   $("#stopCollectedCardShare").onclick=async()=>{if(!confirm("確定停止這張名片目前的公開分享？舊網址將立即失效。"))return;try{await api(`/v1/card-collection/${encodeURIComponent(card.id)}/share`,{method:"DELETE"});alert("已停止分享");}catch(error){alert(error.message)}};
   $("#showMyCardQr").onclick=()=>alert("公開連結會在分享電子名片時建立。");
@@ -1224,7 +1248,7 @@ async function publicSharedContact(){
     const renderVersion=(versionId)=>{
       const selectedId=cardVersionMeta[versionId] ? versionId : (card.selectedVersion || "standard");
       const viewed=cardWithVersion(card,selectedId), actions=(viewed.buttons || []).filter((item)=>item?.enabled !== false && item.label && item.value);
-      $("#app").innerHTML=`<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id,meta])=>`<button type="button" data-shared-contact-version="${id}" class="${id===selectedId?"active":""}">${meta.label}</button>`).join("")}</div>${viewed.coverUrl || card.imageUrl ? `<img class="public-card-cover public-card-cover-${esc(selectedId)}" src="${esc(viewed.coverUrl || card.imageUrl)}" alt="${esc(viewed.displayName)} 的電子名片">`:""}<section class="public-card-body"><p class="collected-digital-eyebrow">電子名片</p><h1>${esc(viewed.versionTitle || viewed.displayName)}</h1>${viewed.englishName?`<p class="muted">${esc(viewed.englishName)}</p>`:""}<h2>${esc(viewed.companyName)}</h2><p>${esc([viewed.jobTitle,viewed.department].filter(Boolean).join("｜"))}</p>${viewed.serviceDescription?`<p class="public-card-service" style="text-align:${esc(viewed.descriptionTextAlign || viewed.serviceTextAlign || "left")}">${esc(viewed.serviceDescription)}</p>`:""}${cardContactRows(viewed)}<div class="business-card-contact-actions">${actions.map(item=>`<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type)?'target="_blank" rel="noopener"':""}>${esc(item.label)}</a>`).join("")}</div><p class="collection-private-note">此電子名片由名片收藏者整理分享。</p><button class="btn alt" id="openSharedMemberHome">開啟 MiraBeauty 會員中心</button></section></section>`;
+      $("#app").innerHTML=`<section class="public-card-page"><div class="public-card-version-tabs" aria-label="名片版型">${Object.entries(cardVersionMeta).map(([id,meta])=>`<button type="button" data-shared-contact-version="${id}" class="${id===selectedId?"active":""}">${meta.label}</button>`).join("")}</div>${viewed.coverUrl || card.imageUrl ? `<img class="public-card-cover public-card-cover-${esc(selectedId)}" src="${esc(viewed.coverUrl || card.imageUrl)}" alt="${esc(viewed.displayName)} 的電子名片">`:""}<section class="public-card-body"><h1>${esc(viewed.versionTitle || viewed.displayName)}</h1>${viewed.englishName?`<p class="muted">${esc(viewed.englishName)}</p>`:""}<h2>${esc(viewed.companyName)}</h2><p>${esc([viewed.jobTitle,viewed.department].filter(Boolean).join("｜"))}</p>${viewed.serviceDescription?`<p class="public-card-service" style="text-align:${esc(viewed.descriptionTextAlign || viewed.serviceTextAlign || "left")}">${esc(viewed.serviceDescription)}</p>`:""}${cardContactRows(viewed)}<div class="business-card-contact-actions">${actions.map(item=>`<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type)?'target="_blank" rel="noopener"':""}>${esc(item.label)}</a>`).join("")}</div><p class="collection-private-note">此電子名片由名片收藏者整理分享。</p><button class="btn alt" id="openSharedMemberHome">開啟 MiraBeauty 會員中心</button></section></section>`;
       document.querySelectorAll("[data-shared-contact-version]").forEach((button)=>button.onclick=()=>renderVersion(button.dataset.sharedContactVersion));
       $("#openSharedMemberHome").onclick=()=>{state.sharedContact="";history.replaceState({},"",location.pathname);render()};
     };
