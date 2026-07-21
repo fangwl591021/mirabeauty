@@ -1309,7 +1309,7 @@ function showCollectionReview(eventId, card, confidence) {
   },{busy:"儲存中…",success:"已收藏"});}catch(error){alert(error.message)}};
 }
 
-async function crmInsightSection(card) {
+function crmInsightSection(card) {
   const insight=card.aiInsights || {};
   const status=insight.status || "";
   const labels={personality:"個性",interests:"興趣",wealth:"財富",health:"健康",career:"事業"};
@@ -1324,11 +1324,12 @@ async function showContactEditor(card) {
   const selected = state.collectionCardVersion && cardVersionMeta[state.collectionCardVersion]
     ? { id:state.collectionCardVersion, ...(card.versions?.[state.collectionCardVersion] || {}), ...cardVersionMeta[state.collectionCardVersion] }
     : activeCardVersion(card);
-  const tabs = `<div class="business-card-tabs"><button data-collection-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-collection-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-collection-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button></div>`;
+  const tabs = `<div class="business-card-tabs"><button data-collection-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-collection-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-collection-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button><button data-collection-card-tab="insights" class="${view === "insights" ? "active" : ""}">五大標籤</button></div>`;
   let panel = "";
-  if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(card)}<div class="business-card-contact-actions">${cardActionItems(card).map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div>${crmInsightSection(card)}</div>`;
+  if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(card)}<div class="business-card-contact-actions">${cardActionItems(card).map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
   if (view === "edit") panel = `<form id="collectionCardForm" class="business-card-form">${collectionForm(card,"contact")}<button class="btn full" type="submit">儲存聯絡資料</button><button class="btn danger full" type="button" id="deleteContact">刪除名片</button></form>`;
   if (view === "digital") panel = lineSourceEcardEditor(card, selected, { collection:true });
+  if (view === "insights") panel = crmInsightSection(card);
   layout(`<section class="business-card collection-editor"><div class="business-card-title"><button class="back-card" id="backCollection" aria-label="返回">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
   $("#backCollection").onclick=()=>{ state.collectionCardView=""; state.collectionCardVersion=""; cardCollection(); };
   document.querySelectorAll("[data-collection-card-tab]").forEach((button) => button.onclick = () => { state.collectionCardView=button.dataset.collectionCardTab; showContactEditor(card); });
