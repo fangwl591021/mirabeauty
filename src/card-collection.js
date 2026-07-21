@@ -72,6 +72,7 @@ function insightMeta(row = {}) {
     cards:value.cards && typeof value.cards === 'object' ? value.cards : {},
     updatedAt:text(value.updatedAt, 80),
     error:text(value.error, 180),
+    analysisVersion:text(value.analysisVersion, 40),
   };
 }
 function rowToCard(row) {
@@ -103,6 +104,7 @@ function bytesToBase64(buffer) {
 const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
 const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
 const CRM_INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
+const CRM_INSIGHT_ANALYSIS_VERSION = 'line-fate-v1';
 const CRM_INSIGHT_SOURCE_KEYS = ['displayName','companyName','jobTitle','department','serviceDescription','note','address'];
 const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, required:CRM_INSIGHT_KEYS, properties:Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,{type:'string'}])) };
 
@@ -158,13 +160,13 @@ export async function expandContactContent(db, userId, id, apiKey, model) {
 
 
 async function generateCrmInsights(apiKey, model, card) {
-  const facts = { name:card.displayName, company:card.companyName, title:card.jobTitle, department:card.department, service:card.serviceDescription, note:card.note, address:card.address };
+  const facts = { name:card.displayName, mobile:text(card.mobile || card.companyPhone,40).replace(/[^0-9+]/g,''), birthday:'', company:card.companyName, title:card.jobTitle };
   const response = await fetch('https://api.openai.com/v1/responses', {
     method:'POST',
     headers:{ authorization:`Bearer ${apiKey}`, 'content-type':'application/json' },
     body:JSON.stringify({
       model:model || 'gpt-5.6-terra', reasoning:{effort:'low'}, max_output_tokens:900,
-      input:[{ role:'user', content:`你是繁體中文 CRM 助手。依下列「名片上可確認的公開文字」產出五項 CRM 溝通標籤。\n\n${JSON.stringify(facts)}\n\n規則：\n- 每項 45 到 90 字，專業、溫和，供業務跟進參考。\n- 個性只能描述「可能的溝通風格」，不可當作心理診斷。\n- 興趣若名片沒有依據，請寫「可於後續互動補充興趣與關注議題」。\n- 財富不得推論財務狀況、收入或投資能力；僅描述可能的商務價值取向。\n- 健康不得推論健康狀態；僅給工作節奏與自我照顧提醒。\n- 事業聚焦專業定位、合作切入點與跟進方向。\n- 不得捏造事實、獎項、客戶、年資或保證。只回傳 JSON。` }],
+      input:[{ role:'user', content:`你是一位專業的商務 AI 心理與命理分析專家。請完全依照 LINE- 專案五大標籤規則分析這張掃描名片。\n\n姓名：${facts.name || '未知'}\n手機：${facts.mobile || '未知'}\n生日：${facts.birthday || '未知'}\n公司：${facts.company || '未知'}\n職稱：${facts.title || '未知'}\n\n分析規則：\n1. 姓名字形判斷行動／思考型，發音判斷外向／內斂，結構判斷主導／依附。\n2. 手機數字頻率依 1領導、2協調、3表達、4穩定、5自由、6責任、7分析、8成就、9理想分析；尾數判斷快攻／慢養，奇偶比判斷衝動／保守。\n3. 有生日時融合八字、紫微斗數、生命靈數與東西方星座；未提供生日就以現有欄位分析，不虛構命盤。\n4. 五項必須融合 VAK 感官偏好、分析／數據／直覺決策模式，以及積極／保守與風險偏好。\n5. personality、interests、wealth、health、career 每項以 20 至 40 個繁體中文字，同時描述具體特徵與商務應對建議。\n6. wealth 不宣稱實際收入或資產；health 不診斷疾病；不得捏造個資或經歷。只回傳 JSON。` }],
       text:{format:{type:'json_schema',name:'crm_five_insights',strict:true,schema:CRM_INSIGHTS_SCHEMA}},
     }),
   });
@@ -214,7 +216,7 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
     const insights=await generateCrmInsights(apiKey,model,card);
     const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
     await db.batch([
-      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'ready',cards:insights,error:''}),contact.id,userId),
+      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'ready',cards:insights,error:'',analysisVersion:CRM_INSIGHT_ANALYSIS_VERSION}),contact.id,userId),
       db.prepare("UPDATE card_import_events SET status='created',ocr_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(result),eventId),
     ]);
   } catch(error) {
@@ -240,7 +242,7 @@ export async function processContactInsightsInBackground(db, userId, id, apiKey,
   try {
     const card=rowToCard(row);
     const cards=await generateCrmInsights(apiKey,model,card);
-    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'ready',cards,error:''}),id).run();
+    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'ready',cards,error:'',analysisVersion:CRM_INSIGHT_ANALYSIS_VERSION}),id).run();
   } catch(error) {
     await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'failed',error:error.message || '分析失敗'}),id).run();
     console.error('Background CRM insight analysis failed',error);
@@ -253,9 +255,10 @@ export async function queueSystemCrmInsightBackfill(db, limit = 6) {
   const result=await db.prepare(`SELECT * FROM contact_cards
     WHERE status='active' AND (
       COALESCE(json_extract(versions_json, '$._crmInsights.status'),'') NOT IN ('ready','queued','processing')
+      OR (json_extract(versions_json, '$._crmInsights.status')='ready' AND COALESCE(json_extract(versions_json, '$._crmInsights.analysisVersion'),'')!=?)
       OR (json_extract(versions_json, '$._crmInsights.status')='queued' AND updated_at <= datetime('now','-10 minutes'))
       OR (json_extract(versions_json, '$._crmInsights.status')='processing' AND updated_at <= datetime('now','-30 minutes'))
-    ) ORDER BY updated_at ASC LIMIT ?`).bind(cappedLimit).all();
+    ) ORDER BY updated_at ASC LIMIT ?`).bind(CRM_INSIGHT_ANALYSIS_VERSION,cappedLimit).all();
   const candidates=result.results || [];
   if(!candidates.length)return {queued:0,tasks:[]};
   await db.batch(candidates.map((row)=>db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(withInsightMeta(row,{status:'queued',error:''}),row.id,row.scanner_user_id)));
