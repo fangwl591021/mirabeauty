@@ -194,7 +194,7 @@ export async function submitImportInBackground(db, bucket, userId, eventId, apiK
   const placeholderVersions=JSON.stringify({_crmInsights:{status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''}});
   await db.prepare(`INSERT INTO contact_cards (id,scanner_user_id,source_event_id,display_name,front_r2_key,front_content_type,versions_json)
     VALUES (?,?,?,?,?,?,?)`).bind(id,userId,eventId,'名片 AI 分析中',event.front_r2_key,event.front_content_type,placeholderVersions).run();
-  await db.prepare("UPDATE card_import_events SET status='queued', contact_card_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id,eventId).run();
+  await db.prepare("UPDATE card_import_events SET status='received', contact_card_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(id,eventId).run();
   const card=await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first();
   return {card:rowToCard(card),existing:false};
 }
