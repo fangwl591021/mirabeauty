@@ -247,9 +247,9 @@ export async function queueLegacyFailedImportRetries(db, limit = 3) {
 }
 
 
-export async function queueContactCrmInsights(db, userId, id) {
+export async function queueContactCrmInsights(db, userId, id, force = false) {
   const row=await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id,userId).first();
-  if(!row || ['queued','processing'].includes(insightMeta(row).status))return false;
+  if(!row || (!force && ['queued','processing'].includes(insightMeta(row).status)))return false;
   await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=? AND status='active'").bind(withInsightMeta(row,{status:'queued',cards:{},error:''}),id,userId).run();
   return true;
 }
