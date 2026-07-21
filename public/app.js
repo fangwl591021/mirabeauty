@@ -930,6 +930,7 @@ async function openCardCropper(file, versionId, afterUpload = null) {
   if (!window.Cropper) throw new Error("裁切器載入失敗，請確認網路後重新開啟頁面");
   if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
   const modal = ensureCardCropperModal(); const image = $("#cardCropperImage");
+  modal.querySelector(".card-cropper-head strong").textContent="裁切封面圖片";
   const ratio = cardVersionMeta[versionId]?.aspect || "20:13"; const [width,height] = ratio.split(":").map(Number);
   const close = () => { cardCropper?.destroy(); cardCropper=null; URL.revokeObjectURL(image.src); modal.classList.remove("open"); };
   $("#closeCardCropper").onclick = close; $("#cancelCardCropper").onclick = close;
@@ -938,6 +939,24 @@ async function openCardCropper(file, versionId, afterUpload = null) {
   cardCropper?.destroy(); cardCropper = new Cropper(image, { aspectRatio:width / height, viewMode:1, dragMode:"move", autoCropArea:.92, cropBoxMovable:true, cropBoxResizable:true, zoomable:true, zoomOnTouch:true, zoomOnWheel:true, movable:true, responsive:true, background:false, guides:true, center:true, highlight:false });
   modal.querySelectorAll("[data-crop-action]").forEach((button) => button.onclick = () => { const action=button.dataset.cropAction; if (action === "zoom-in") cardCropper.zoom(.1); if (action === "zoom-out") cardCropper.zoom(-.1); if (action === "rotate") cardCropper.rotate(90); if (action === "reset") cardCropper.reset(); });
   $("#confirmCardCropper").onclick = async () => { try { const button=$("#confirmCardCropper"); button.disabled=true; button.textContent="處理中"; const size = versionId === "full" ? {width:900,height:1350} : versionId === "square" ? {width:1000,height:1000} : {width:1200,height:780}; const canvas=cardCropper.getCroppedCanvas({ ...size, imageSmoothingEnabled:true, imageSmoothingQuality:"high" }); const blob=await new Promise((resolve)=>canvas.toBlob(resolve,"image/webp",.86)); if (!blob) throw new Error("圖片裁切失敗"); const imageUrl=await uploadCardImage(new File([blob],"card-cover.webp",{type:"image/webp"})); const coverInput=$("#my-v1-img-url") || $("#cardVersionCover"); coverInput.value=imageUrl; coverInput.dispatchEvent(new Event("input", { bubbles:true })); if (typeof afterUpload === "function") await afterUpload(imageUrl); close(); alert("圖片已裁切並儲存"); } catch(error) { alert(error.message); } finally { const button=$("#confirmCardCropper"); if (button) { button.disabled=false; button.textContent="確認裁切"; } } };
+}
+async function cropCollectionScanImage(file, sideLabel = "正面") {
+  if (!window.Cropper) throw new Error("裁切器載入失敗，請確認網路後重新開啟頁面");
+  if (!file?.type?.startsWith("image/")) throw new Error("請選擇圖片檔案");
+  const modal=ensureCardCropperModal(); const image=$("#cardCropperImage"); const objectUrl=URL.createObjectURL(file);
+  modal.querySelector(".card-cropper-head strong").textContent=`裁切名片${sideLabel}`;
+  image.alt=`名片${sideLabel}裁切預覽`; modal.classList.add("open"); image.src=objectUrl;
+  try { await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error("名片圖片讀取失敗"));}); }
+  catch(error) { URL.revokeObjectURL(objectUrl);modal.classList.remove("open");throw error; }
+  cardCropper?.destroy();
+  cardCropper=new Cropper(image,{viewMode:1,dragMode:"move",autoCropArea:.9,cropBoxMovable:true,cropBoxResizable:true,zoomable:true,zoomOnTouch:true,zoomOnWheel:true,movable:true,responsive:true,background:false,guides:true,center:true,highlight:false});
+  modal.querySelectorAll("[data-crop-action]").forEach((button)=>button.onclick=()=>{const action=button.dataset.cropAction;if(action==="zoom-in")cardCropper.zoom(.1);if(action==="zoom-out")cardCropper.zoom(-.1);if(action==="rotate")cardCropper.rotate(90);if(action==="reset")cardCropper.reset();});
+  return new Promise((resolve)=>{
+    let settled=false;
+    const finish=(value)=>{if(settled)return;settled=true;cardCropper?.destroy();cardCropper=null;URL.revokeObjectURL(objectUrl);modal.classList.remove("open");resolve(value);};
+    $("#closeCardCropper").onclick=()=>finish(null); $("#cancelCardCropper").onclick=()=>finish(null);
+    $("#confirmCardCropper").onclick=async()=>{const button=$("#confirmCardCropper");try{button.disabled=true;button.textContent="裁切中…";const canvas=cardCropper.getCroppedCanvas({maxWidth:2000,maxHeight:2000,imageSmoothingEnabled:true,imageSmoothingQuality:"high"});const blob=await new Promise((done)=>canvas.toBlob(done,"image/webp",.9));if(!blob)throw new Error("名片裁切失敗");finish(new File([blob],`business-card-${sideLabel === "背面" ? "back" : "front"}.webp`,{type:"image/webp"}));}catch(error){alert(error.message||"名片裁切失敗");}finally{if(button.isConnected){button.disabled=false;button.textContent="確認裁切";}}};
+  });
 }
 async function prepareCardLiff() {
   await initLiffOnce();
@@ -1294,15 +1313,17 @@ async function attachCollectionImages() {
 function bindScanInputs() {
   const select = async (files) => {
     try {
-      collectionScanFiles = await Promise.all(Array.from(files || []).slice(0,2).map(compressCardImage));
+      const selected=Array.from(files || []).slice(0,2); const cropped=[];
+      for(let index=0;index<selected.length;index+=1){const image=await cropCollectionScanImage(selected[index],index ? "背面" : "正面");if(!image)return;cropped.push(await compressCardImage(image));}
+      collectionScanFiles = cropped;
       if (!collectionScanFiles.length) return;
       $("#scanDraft").classList.remove("hidden");
-      $("#scanDraftCount").textContent = `已選擇 ${collectionScanFiles.length} 張（正面${collectionScanFiles.length > 1 ? "＋背面" : ""}）`;
+      $("#scanDraftCount").textContent = `已裁切 ${collectionScanFiles.length} 張（正面${collectionScanFiles.length > 1 ? "＋背面" : ""}）`;
     } catch(error) { alert(error.message); }
   };
   $("#cardCamera").onchange = (event)=>select(event.target.files);
   $("#cardGallery").onchange = (event)=>select(event.target.files);
-  $("#cardBack").onchange = async(event)=>{try{const file=event.target.files?.[0];if(file){collectionScanFiles[1]=await compressCardImage(file);$("#scanDraftCount").textContent="已選擇 2 張（正面＋背面）";}}catch(error){alert(error.message)}};
+  $("#cardBack").onchange = async(event)=>{try{const file=event.target.files?.[0];if(file){const cropped=await cropCollectionScanImage(file,"背面");if(!cropped)return;collectionScanFiles[1]=await compressCardImage(cropped);$("#scanDraftCount").textContent="已裁切 2 張（正面＋背面）";}}catch(error){alert(error.message)}};
   $("#startCardOcr").onclick = async()=>{
     const button=$("#startCardOcr");
     try { await withActionFeedback(button,async()=>{
@@ -1394,7 +1415,7 @@ async function publicSharedContact(){
 
 async function cardCollection(search = "") {
   state.tab="cardCollection";
-  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">送出後立即建立 CRM 檔案；AI 會在背景辨識名片並補上五大標籤，不必停在畫面等待。最多正反兩面。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">AI 五大標籤由系統端背景分析與補齊；無需在用戶端操作。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；最多正反兩面。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">AI 五大標籤由系統端背景分析與補齊；無需在用戶端操作。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
   bindScanInputs();
   try {
     collectionCards=(await api(`/v1/card-collection?search=${encodeURIComponent(search)}`)).cards;
