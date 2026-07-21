@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MiraBeauty 營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260721-3" />
+    <link rel="stylesheet" href="/admin.css?v=20260721-4" />
   </head>
   <body>
     <div class="shell">
@@ -21,6 +21,9 @@
           </button>
           <button class="nav-item" data-page="members">
             <span>♟</span> 會員 CRM
+          </button>
+          <button class="nav-item" data-page="cards">
+            <span>▦</span> 全站名片庫
           </button>
           <button class="nav-item" data-page="points">
             <span>◉</span> 點數規則
@@ -121,6 +124,24 @@
             <div class="crm-table-wrap"><table class="crm-table"><thead><tr><th>會員</th><th>公司會員編號</th><th>系統會員編號</th><th>推薦人</th><th>點數錢包</th><th>註冊狀態</th><th>建立時間</th><th></th></tr></thead><tbody id="memberList"></tbody></table></div>
           </section>
           <section id="memberDetail" class="panel crm-detail hidden"></section>
+        </section>
+
+        <section class="page" data-content="cards">
+          <section class="panel card-library-panel">
+            <div class="panel-head">
+              <div><h2>全站名片庫</h2><p>集中查看會員數位名片，以及各會員掃描、收藏的客戶名片。</p></div>
+              <div class="card-library-actions"><button class="secondary" type="button" id="exportAdminCards">匯出備份</button><button class="secondary" type="button" id="refreshAdminCards">重新整理</button></div>
+            </div>
+            <div class="card-library-metrics"><article><small>全部名片</small><strong id="adminCardTotal">–</strong></article><article><small>會員名片</small><strong id="adminPersonalCardTotal">–</strong></article><article><small>客戶收藏</small><strong id="adminCollectionCardTotal">–</strong></article><article><small>已綁會員</small><strong id="adminBoundCardTotal">–</strong></article></div>
+            <div class="card-library-toolbar">
+              <label class="crm-search">⌕<input id="adminCardSearch" placeholder="搜尋姓名、電話、公司、職稱、備註或五大標籤…"></label>
+              <select id="adminCardType"><option value="all">全部來源</option><option value="personal">會員數位名片</option><option value="collection">客戶收藏名片</option></select>
+              <select id="adminCardOwner"><option value="all">全部歸屬會員</option></select>
+              <span>顯示：<strong id="adminCardFilteredTotal">–</strong></span>
+            </div>
+            <div class="crm-table-wrap"><table class="crm-table card-library-table"><thead><tr><th>姓名</th><th>公司與職稱</th><th>聯絡方式</th><th>歸屬會員</th><th>來源</th><th>綁定狀態</th><th>五大標籤</th><th></th></tr></thead><tbody id="adminCardList"><tr><td colspan="8" class="crm-empty">請載入全站名片庫</td></tr></tbody></table></div>
+          </section>
+          <section id="adminCardDetail" class="panel card-library-detail hidden"></section>
         </section>
 
         <section class="page" data-content="points">
@@ -350,6 +371,6 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260721-3"></script>
+    <script type="module" src="/admin.js?v=20260721-4"></script>
   </body>
 </html>
