@@ -213,19 +213,37 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
     const result=await recognizeWithOpenAI(apiKey,model,images);
     if(!result.isBusinessCard)throw new Error('這張圖片看起來不是名片，請重新拍攝');
     const card=cleanCard(result);
-    const insights=await generateCrmInsights(apiKey,model,card);
     const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
     await db.batch([
-      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'ready',cards:insights,error:'',analysisVersion:CRM_INSIGHT_ANALYSIS_VERSION}),contact.id,userId),
+      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'queued',cards:{},error:''}),contact.id,userId),
       db.prepare("UPDATE card_import_events SET status='created',ocr_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(result),eventId),
     ]);
   } catch(error) {
     await db.batch([
       db.prepare("UPDATE card_import_events SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId),
-      db.prepare("UPDATE contact_cards SET display_name=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind('名片分析未完成',withInsightMeta(contact,{status:'failed',error:error.message || '分析失敗'}),contact.id),
+      db.prepare("UPDATE contact_cards SET display_name=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind('名片辨識未完成',withInsightMeta(contact,{status:'failed',error:error.message || 'OCR 辨識失敗'}),contact.id),
     ]);
-    console.error('Background card analysis failed',error);
+    console.error('Background card OCR failed',error);
+    return;
   }
+  // OCR 已成功寫入後才執行五大標籤。標籤失敗只能改變 _crmInsights，
+  // 不得回滾或覆蓋已辨識完成的名片聯絡資料。
+  try {
+    await processContactInsightsInBackground(db,userId,contact.id,apiKey,model);
+  } catch(error) {
+    console.error('Post-OCR CRM insight scheduling failed',error);
+  }
+}
+
+export async function queueLegacyFailedImportRetries(db, limit = 3) {
+  const cappedLimit=Math.max(1,Math.min(Number(limit) || 3,10));
+  const result=await db.prepare(`SELECT cie.id event_id,cie.scanner_user_id
+    FROM card_import_events cie
+    JOIN contact_cards cc ON cc.id=cie.contact_card_id
+    WHERE cie.status='failed' AND cie.front_r2_key!='' AND cc.status='active'
+      AND cc.display_name='名片分析未完成'
+    ORDER BY cie.updated_at ASC LIMIT ?`).bind(cappedLimit).all();
+  return (result.results || []).map((row)=>({eventId:row.event_id,userId:row.scanner_user_id}));
 }
 
 
