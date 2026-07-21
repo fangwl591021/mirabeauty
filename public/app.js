@@ -433,7 +433,7 @@ function bindPortalActions(){document.querySelectorAll("[data-home-action]").for
 async function home() {
   const wallet = await api("/v1/points/wallet");
   layout(
-    `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>點數錢包</span><strong>${format(wallet.wallet.balance)}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame"><iframe title="MiraBeauty 官網" src="https://mirabeauty.com.tw/about" loading="lazy"></iframe></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">複製邀約連結</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
+    `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>點數錢包</span><strong>${format(wallet.wallet.balance)}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame"><iframe title="MiraBeauty 官網" src="https://mirabeauty.com.tw/about" loading="lazy"></iframe></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">分享邀請名片</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
 }
 async function invite() {
@@ -455,9 +455,20 @@ async function showShareQr() {
 }
 async function copyInvite() {
   const url = $("#shareQr").dataset.url || (await invite()).invite.url;
-  await navigator.clipboard.writeText(url);
-  if (navigator.share) await navigator.share({ title: "MiraBeauty 邀請", url });
-  else alert("邀約網址已複製");
+  await initLiffOnce();
+  if (!liff.isLoggedIn()) {
+    markLiffLoginPending();
+    liff.login({ redirectUri:liffLoginRedirectUrl() });
+    return;
+  }
+  if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享名片功能");
+  const result = await api("/v1/cards/me");
+  if (!result.card) throw new Error("請先到「我的名片」建立名片，再分享邀請");
+  const flex = cardFlex(result.card);
+  const joinButton = { type:"button", style:"primary", height:"sm", color:"#B96072", action:{ type:"uri", label:"立即加入米拉", uri:url } };
+  flex.footer = { type:"box", layout:"vertical", spacing:"sm", contents:[joinButton, ...(flex.footer?.contents || [])].slice(0,4) };
+  const shared = await liff.shareTargetPicker([{ type:"flex", altText:`米拉邀請名片｜${String(result.card.displayName || state.member?.displayName || "MiraBeauty").slice(0,100)}`, contents:flex }]);
+  if (shared !== false) alert("邀請名片已分享");
 }
 async function showWalletQr(qrId, expiryId) {
   const q = await api("/v1/points/wallet/qr", { method: "POST", body: "{}" });
