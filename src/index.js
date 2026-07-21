@@ -61,6 +61,7 @@ import {
   recognizeImport,
   submitImportInBackground,
   processImportInBackground,
+  queueLegacyFailedImportRetries,
   queueContactCrmInsights,
   processContactInsightsInBackground,
   queueSystemCrmInsightBackfill,
@@ -1405,6 +1406,8 @@ async function runSystemCrmInsightBackfill(env) {
   try {
     const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
     if(!openAIKey)return;
+    const importRetries=await queueLegacyFailedImportRetries(env.DB,3);
+    for(const task of importRetries)await processImportInBackground(env.DB,env.MEDIA,task.userId,task.eventId,openAIKey,env.OPENAI_CARD_MODEL);
     const queued=await queueSystemCrmInsightBackfill(env.DB,6);
     for(const task of queued.tasks) await processContactInsightsInBackground(env.DB,task.userId,task.id,openAIKey,env.OPENAI_CARD_MODEL);
     const memberTasks=await queueSystemMemberCrmInsightBackfill(env.DB,6);
