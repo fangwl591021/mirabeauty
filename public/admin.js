@@ -94,6 +94,7 @@ function switchPage(page) {
   const names = {
     dashboard: ["營運統計中心", "MiraBeauty 會員、點數與活動即時概況"],
     members: ["會員 CRM", "LINE Login 會員與推薦關係"],
+    cards: ["全站名片庫", "會員數位名片與客戶收藏名片"],
     points: ["點數規則", "建立並管理各類贈點事件"],
     courses: ["課程／活動", "活動清單、公開設定與場次管理"],
     calendar: ["課程／活動", "行事曆、活動 QR、報名與簽到"],
@@ -104,6 +105,7 @@ function switchPage(page) {
   $("#pageTitle").textContent = names[page][0];
   $("#pageHint").textContent = names[page][1];
   if (page === "members") loadMembers();
+  if (page === "cards") loadAdminCards();
   if (page === "carousel") loadCheckinTemplate();
   if (page === "points") loadPointRules();
   if (page === "courses") loadCourses();
@@ -166,6 +168,18 @@ async function testRichMenuToken(button) {
     showStatus(error.message, "error");
   }
 }
+let adminCards=[];
+const adminCardInsightLabels={personality:"個性",interests:"興趣",wealth:"財富",health:"健康",career:"事業"};
+const adminCardSourceLabel=(card)=>card.card_kind==="personal"?"會員數位名片":card.source_type==="public_card"?"收藏會員名片":"掃描名片";
+const adminCardInsightText=(card)=>Object.keys(adminCardInsightLabels).map((key)=>card[`insight_${key}`]||"").join(" ");
+function populateAdminCardOwners(){const select=$("#adminCardOwner");if(!select)return;const current=select.value||"all";const owners=Array.from(new Map(adminCards.map((card)=>[card.owner_user_id,{id:card.owner_user_id,name:card.owner_name||card.owner_member_number||card.owner_user_id}])).values()).sort((a,b)=>a.name.localeCompare(b.name,"zh-Hant"));select.innerHTML='<option value="all">全部歸屬會員</option>'+owners.map((owner)=>`<option value="${esc(owner.id)}">${esc(owner.name)}</option>`).join("");select.value=owners.some((owner)=>owner.id===current)?current:"all";}
+function filteredAdminCards(){const query=String($("#adminCardSearch")?.value||"").trim().toLowerCase(),type=$("#adminCardType")?.value||"all",owner=$("#adminCardOwner")?.value||"all";return adminCards.filter((card)=>{if(type!=="all"&&card.card_kind!==type)return false;if(owner!=="all"&&card.owner_user_id!==owner)return false;if(!query)return true;return [card.display_name,card.english_name,card.company_name,card.job_title,card.department,card.mobile,card.company_phone,card.email,card.note,card.owner_name,adminCardInsightText(card)].join(" ").toLowerCase().includes(query);});}
+function renderAdminCards(){const cards=filteredAdminCards();$("#adminCardFilteredTotal").textContent=format(cards.length);$("#adminCardList").innerHTML=cards.length?cards.map((card)=>{const bound=Boolean(card.bound_user_id);const insight=card.insight_status||"";const insightBadge=insight==="ready"?'<span class="card-library-badge insight-ready">已完成</span>':insight==="failed"?'<span class="card-library-badge insight-failed">待重試</span>':insight==="queued"||insight==="processing"?'<span class="card-library-badge insight-pending">分析中</span>':'<span class="card-library-badge">尚未建立</span>';return `<tr><td><b>${esc(card.display_name||"未命名名片")}</b><small>${esc(card.english_name||"")}</small></td><td><b>${esc(card.company_name||"–")}</b><small>${esc([card.job_title,card.department].filter(Boolean).join("｜"))}</small></td><td><b>${esc(card.mobile||card.company_phone||"–")}</b><small>${esc(card.email||"")}</small></td><td><b>${esc(card.owner_name||"未命名會員")}</b><small>${esc(card.owner_member_number||card.owner_user_id)}</small></td><td><span class="card-library-badge source">${esc(adminCardSourceLabel(card))}</span></td><td>${bound?'<span class="card-library-badge bound">已綁定</span>':'<span class="card-library-badge">未綁定</span>'}</td><td>${insightBadge}</td><td><button class="crm-open" data-admin-card-id="${esc(card.id)}" data-admin-card-kind="${esc(card.card_kind)}">查看</button></td></tr>`;}).join(""):'<tr><td colspan="8" class="crm-empty">目前沒有符合條件的名片</td></tr>';document.querySelectorAll("[data-admin-card-id]").forEach((button)=>button.onclick=()=>openAdminCardDetail(button.dataset.adminCardId,button.dataset.adminCardKind));}
+function adminCardInsights(card){const status=card.insight_status||"";if(status!=="ready")return `<section class="member-crm-insights pending ${status==="failed"?"failed":""}"><div><h3>AI 五大標籤</h3><span>${status==="failed"?"稍後自動重試":"系統分析中"}</span></div><p>${esc(card.insight_error||"五大標籤將由系統背景補齊，不影響 OCR 與名片資料。")}</p></section>`;return `<section class="member-crm-insights"><div><h3>AI 五大標籤</h3><span>名片 CRM 溝通參考</span></div><section>${Object.entries(adminCardInsightLabels).map(([key,label])=>`<article class="${key}"><h4>${label}</h4><p>${esc(card[`insight_${key}`]||"尚待補充")}</p></article>`).join("")}</section></section>`;}
+function openAdminCardDetail(id,kind){const card=adminCards.find((item)=>item.id===id&&item.card_kind===kind);if(!card)return;const panel=$("#adminCardDetail");panel.classList.remove("hidden");panel.innerHTML=`<div class="crm-detail-head"><div><h2>${esc(card.display_name||"未命名名片")}</h2><small>${esc(adminCardSourceLabel(card))}｜名片 ID：${esc(card.id)}</small></div><button class="secondary" id="closeAdminCardDetail">關閉</button></div><div class="card-library-detail-grid"><article><small>公司／職稱</small><b>${esc(card.company_name||"未填寫")}</b><span>${esc([card.job_title,card.department].filter(Boolean).join("｜")||"–")}</span></article><article><small>手機／公司電話</small><b>${esc(card.mobile||"未填寫")}</b><span>${esc(card.company_phone||"–")}</span></article><article><small>Email</small><b>${esc(card.email||"未填寫")}</b><span>${esc(card.website_url||"")}</span></article><article><small>歸屬會員</small><b>${esc(card.owner_name||"未命名會員")}</b><span>${esc(card.owner_member_number||card.owner_user_id)}</span></article><article><small>LINE／會員綁定</small><b>${card.bound_user_id?"已綁定":"未綁定"}</b><span>${esc(card.bound_user_id||"–")}</span></article><article><small>建立／更新時間</small><b>${esc(card.created_at||"–")}</b><span>${esc(card.updated_at||"–")}</span></article></div>${card.address?`<section class="card-library-note"><h3>地址</h3><p>${esc(card.address)}</p></section>`:""}${card.service_description?`<section class="card-library-note"><h3>服務內容</h3><p>${esc(card.service_description)}</p></section>`:""}${card.note?`<section class="card-library-note"><h3>收藏者私人備註</h3><p>${esc(card.note)}</p></section>`:""}${adminCardInsights(card)}`;$("#closeAdminCardDetail").onclick=()=>panel.classList.add("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});}
+async function loadAdminCards(){const body=$("#adminCardList");if(body)body.innerHTML='<tr><td colspan="8" class="crm-empty">載入全站名片中…</td></tr>';try{const data=await api("/v1/admin/cards");adminCards=data.cards||[];$("#adminCardTotal").textContent=format(adminCards.length);$("#adminPersonalCardTotal").textContent=format(adminCards.filter((card)=>card.card_kind==="personal").length);$("#adminCollectionCardTotal").textContent=format(adminCards.filter((card)=>card.card_kind==="collection").length);$("#adminBoundCardTotal").textContent=format(adminCards.filter((card)=>card.bound_user_id).length);populateAdminCardOwners();renderAdminCards();}catch(error){if(body)body.innerHTML=`<tr><td colspan="8" class="crm-empty">${esc(error.message)}</td></tr>`;showStatus(error.message,"error");}}
+function exportAdminCards(){if(!adminCards.length)return showStatus("目前沒有可匯出的名片","error");const blob=new Blob([JSON.stringify(adminCards,null,2)],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download=`mirabeauty-cards-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);showStatus(`已匯出 ${adminCards.length} 張名片`);}
+
 let crmMembers = [];
 const memberAvatar = (member) => member.picture_url ? `<img class="crm-avatar" src="${esc(member.picture_url)}" alt="">` : `<span class="crm-avatar crm-avatar-empty">${esc((member.display_name || "會").slice(0, 1))}</span>`;
 const crmStatus = (member) => member.profile_completed_at ? '<span class="crm-tag ok">已完成註冊</span>' : '<span class="crm-tag">待完成註冊</span>';
@@ -266,6 +280,11 @@ $("#refreshMembers").addEventListener("click", (event) =>
   withButtonFeedback(event.currentTarget, loadMembers, { busy:"整理中…", success:"已更新" }),
 );
 $("#memberSearch").addEventListener("input", renderMembers);
+$("#refreshAdminCards")?.addEventListener("click",(event)=>withButtonFeedback(event.currentTarget,loadAdminCards,{busy:"整理中…",success:"已更新"}));
+$("#exportAdminCards")?.addEventListener("click",exportAdminCards);
+$("#adminCardSearch")?.addEventListener("input",renderAdminCards);
+$("#adminCardType")?.addEventListener("change",renderAdminCards);
+$("#adminCardOwner")?.addEventListener("change",renderAdminCards);
 $("#saveRichMenuToken")?.addEventListener("click", event => saveRichMenuToken(event.currentTarget));
 $("#testRichMenuToken")?.addEventListener("click", event => testRichMenuToken(event.currentTarget));
 $("#saveOpenAIKey")?.addEventListener("click",event=>saveOpenAISetting(event.currentTarget));
