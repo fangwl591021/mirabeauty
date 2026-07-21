@@ -747,6 +747,43 @@ async function app(request, env, ctx) {
         },
       });
     }
+    if (request.method === "GET" && url.pathname === "/v1/admin/cards") {
+      const rows=await env.DB.prepare(`
+        SELECT * FROM (
+          SELECT cc.id,'collection' AS card_kind,cc.source_type,cc.scanner_user_id AS owner_user_id,
+            COALESCE(owner.display_name,'') AS owner_name,COALESCE(owner.member_number,'') AS owner_member_number,
+            cc.display_name,cc.english_name,cc.company_name,cc.job_title,cc.department,cc.mobile,cc.company_phone,
+            cc.email,cc.website_url,cc.line_url,cc.address,cc.service_description,cc.note,COALESCE(cc.bound_user_id,'') AS bound_user_id,
+            cc.status,cc.created_at,cc.updated_at,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.status'),'') AS insight_status,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.error'),'') AS insight_error,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.cards.personality'),'') AS insight_personality,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.cards.interests'),'') AS insight_interests,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.cards.wealth'),'') AS insight_wealth,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.cards.health'),'') AS insight_health,
+            COALESCE(json_extract(cc.versions_json,'$._crmInsights.cards.career'),'') AS insight_career
+          FROM contact_cards cc
+          LEFT JOIN member_profiles owner ON owner.platform_user_id=cc.scanner_user_id
+          WHERE cc.status='active'
+          UNION ALL
+          SELECT pc.id,'personal' AS card_kind,'personal_card' AS source_type,pc.platform_user_id AS owner_user_id,
+            COALESCE(owner.display_name,'') AS owner_name,COALESCE(owner.member_number,'') AS owner_member_number,
+            pc.display_name,pc.english_name,pc.company_name,pc.job_title,pc.department,pc.mobile,pc.company_phone,
+            pc.email,pc.website_url,pc.line_url,pc.address,pc.service_description,'' AS note,pc.platform_user_id AS bound_user_id,
+            pc.status,pc.created_at,pc.updated_at,COALESCE(mci.status,'') AS insight_status,COALESCE(mci.last_error,'') AS insight_error,
+            COALESCE(json_extract(mci.insights_json,'$.personality'),'') AS insight_personality,
+            COALESCE(json_extract(mci.insights_json,'$.interests'),'') AS insight_interests,
+            COALESCE(json_extract(mci.insights_json,'$.wealth'),'') AS insight_wealth,
+            COALESCE(json_extract(mci.insights_json,'$.health'),'') AS insight_health,
+            COALESCE(json_extract(mci.insights_json,'$.career'),'') AS insight_career
+          FROM personal_cards pc
+          LEFT JOIN member_profiles owner ON owner.platform_user_id=pc.platform_user_id
+          LEFT JOIN member_crm_insights mci ON mci.platform_user_id=pc.platform_user_id
+          WHERE pc.status!='archived'
+        ) ORDER BY updated_at DESC LIMIT 1000
+      `).all();
+      return json({success:true,cards:rows.results||[]});
+    }
     if (request.method === "GET" && url.pathname === "/v1/admin/members") {
       const rows = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
