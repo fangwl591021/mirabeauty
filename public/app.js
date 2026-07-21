@@ -454,21 +454,25 @@ async function showShareQr() {
   }
 }
 async function copyInvite() {
-  const url = $("#shareQr").dataset.url || (await invite()).invite.url;
-  await initLiffOnce();
-  if (!liff.isLoggedIn()) {
-    markLiffLoginPending();
-    liff.login({ redirectUri:liffLoginRedirectUrl() });
-    return;
+  try {
+    const url = $("#shareQr").dataset.url || (await invite()).invite.url;
+    await initLiffOnce();
+    if (!liff.isLoggedIn()) {
+      markLiffLoginPending();
+      liff.login({ redirectUri:liffLoginRedirectUrl() });
+      return;
+    }
+    if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享名片功能");
+    const result = await api("/v1/cards/me");
+    if (!result.card) throw new Error("請先到「我的名片」建立名片，再分享邀請");
+    const flex = cardFlex(result.card);
+    const joinButton = { type:"button", style:"primary", height:"sm", color:"#B96072", action:{ type:"uri", label:"立即加入米拉", uri:url } };
+    flex.footer = { type:"box", layout:"vertical", spacing:"sm", contents:[joinButton, ...(flex.footer?.contents || [])].slice(0,4) };
+    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`米拉邀請名片｜${String(result.card.displayName || state.member?.displayName || "MiraBeauty").slice(0,100)}`, contents:flex }]);
+    if (shared !== false) alert("邀請名片已分享");
+  } catch (error) {
+    if (!/cancel/i.test(String(error?.message || ""))) alert(error.message || "邀請名片分享失敗");
   }
-  if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享名片功能");
-  const result = await api("/v1/cards/me");
-  if (!result.card) throw new Error("請先到「我的名片」建立名片，再分享邀請");
-  const flex = cardFlex(result.card);
-  const joinButton = { type:"button", style:"primary", height:"sm", color:"#B96072", action:{ type:"uri", label:"立即加入米拉", uri:url } };
-  flex.footer = { type:"box", layout:"vertical", spacing:"sm", contents:[joinButton, ...(flex.footer?.contents || [])].slice(0,4) };
-  const shared = await liff.shareTargetPicker([{ type:"flex", altText:`米拉邀請名片｜${String(result.card.displayName || state.member?.displayName || "MiraBeauty").slice(0,100)}`, contents:flex }]);
-  if (shared !== false) alert("邀請名片已分享");
 }
 async function showWalletQr(qrId, expiryId) {
   const q = await api("/v1/points/wallet/qr", { method: "POST", body: "{}" });
