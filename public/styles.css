@@ -134,3 +134,6 @@
 .crm-insights-pending{padding:16px;border:1px dashed #dfc7cf;border-radius:12px;background:#fff9fa;color:#6f6676}.crm-insights-pending p{margin:8px 0 0;line-height:1.6}
 @media(max-width:900px){.crm-insights-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.crm-insight-card:last-child{grid-column:1/-1}}
 @media(max-width:520px){.crm-insights-grid{grid-template-columns:1fr}.crm-insight-card:last-child{grid-column:auto}}
+
+/* 名片詳細資料：聯絡資料、編輯內容、數位名片、五大標籤四個分頁。 */
+.business-card-tabs{grid-template-columns:repeat(4,1fr)}
