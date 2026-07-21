@@ -57,6 +57,9 @@ import {
   deleteContact,
   expandContactContent,
   listContacts,
+  normalizeEmail,
+  normalizeNameCompany,
+  normalizePhone,
   getSharedContact,
   recognizeImport,
   submitImportInBackground,
@@ -783,6 +786,35 @@ async function app(request, env, ctx) {
         ) ORDER BY updated_at DESC LIMIT 1000
       `).all();
       return json({success:true,cards:rows.results||[]});
+    }
+    const adminCardMatch=url.pathname.match(/^\/v1\/admin\/cards\/(personal|collection)\/([^/]+)$/);
+    if(request.method==="PATCH"&&adminCardMatch){
+      const kind=adminCardMatch[1],cardId=decodeURIComponent(adminCardMatch[2]),body=(await readJson(request))||{};
+      const limits={displayName:120,englishName:120,companyName:180,jobTitle:120,department:120,mobile:40,companyPhone:40,email:320,websiteUrl:2048,lineUrl:2048,address:300,serviceDescription:1600,note:1000};
+      const value=(key)=>String(body[key]||"").trim().slice(0,limits[key]);
+      const card={displayName:value("displayName"),englishName:value("englishName"),companyName:value("companyName"),jobTitle:value("jobTitle"),department:value("department"),mobile:value("mobile"),companyPhone:value("companyPhone"),email:value("email"),websiteUrl:value("websiteUrl"),lineUrl:value("lineUrl"),address:value("address"),serviceDescription:value("serviceDescription"),note:value("note")};
+      if(!card.displayName)return badRequest("名片姓名不可空白");
+      for(const [key,label] of [["websiteUrl","網站"],["lineUrl","LINE 連結"]])if(card[key]&&!/^https?:\/\//i.test(card[key]))return badRequest(`${label}必須以 http:// 或 https:// 開頭`);
+      if(kind==="collection"){
+        const existing=await env.DB.prepare("SELECT scanner_user_id FROM contact_cards WHERE id=? AND status='active'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到收藏名片"},404);
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='active'`).bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,normalizePhone(card.mobile),normalizeEmail(card.email),normalizeNameCompany(card.displayName,card.companyName),cardId),
+          env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.updated',?)").bind(newId("audit"),admin.userId,existing.scanner_user_id,JSON.stringify({cardId,kind})),
+        ]);
+        await queueContactCrmInsights(env.DB,existing.scanner_user_id,cardId,true);
+        scheduleContactCrmInsights(env,ctx,existing.scanner_user_id,cardId);
+      }else{
+        const existing=await env.DB.prepare("SELECT platform_user_id FROM personal_cards WHERE id=? AND status!='archived'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到會員名片"},404);
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE personal_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='archived'`).bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,cardId),
+          env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.updated',?)").bind(newId("audit"),admin.userId,existing.platform_user_id,JSON.stringify({cardId,kind})),
+        ]);
+        await queueMemberCrmInsight(env.DB,existing.platform_user_id);
+        scheduleMemberCrmInsights(env,ctx,existing.platform_user_id);
+      }
+      return json({success:true});
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/members") {
       const rows = await env.DB.prepare(`
