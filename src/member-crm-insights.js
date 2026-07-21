@@ -1,9 +1,11 @@
-const INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
+const ANALYSIS_VERSION='line-fate-v1';
+const OUTPUT_KEYS = {Personality:'personality',Hobbies:'interests',Wealth:'wealth',Health:'health',Career:'career'};
+const INSIGHT_KEYS = Object.values(OUTPUT_KEYS);
 const INSIGHTS_SCHEMA = {
   type:'object',
   additionalProperties:false,
-  required:INSIGHT_KEYS,
-  properties:Object.fromEntries(INSIGHT_KEYS.map((key)=>[key,{type:'string'}])),
+  required:Object.keys(OUTPUT_KEYS),
+  properties:Object.fromEntries(Object.keys(OUTPUT_KEYS).map((key)=>[key,{type:'string',minLength:20,maxLength:60}])),
 };
 const text=(value,max=1000)=>String(value || '').trim().slice(0,max);
 
@@ -15,6 +17,7 @@ export function memberCrmInsightFromRow(row = {}) {
     cards:Object.fromEntries(INSIGHT_KEYS.map((key)=>[key,text(cards[key],220)])),
     error:text(row.last_error,180),
     updatedAt:text(row.updated_at,80),
+    analysisVersion:text(row.analysis_version,40),
   };
 }
 
@@ -25,11 +28,11 @@ export async function getMemberCrmInsight(db,userId) {
 export async function queueMemberCrmInsight(db,userId) {
   await db.prepare(`INSERT INTO member_crm_insights (platform_user_id,status,insights_json,last_error)
     VALUES (?,'queued','{}','') ON CONFLICT(platform_user_id) DO UPDATE SET
-    status='queued',insights_json='{}',last_error='',updated_at=CURRENT_TIMESTAMP`).bind(userId).run();
+    status='queued',insights_json='{}',last_error='',analysis_version='',updated_at=CURRENT_TIMESTAMP`).bind(userId).run();
 }
 
 async function memberFacts(db,userId) {
-  return db.prepare(`SELECT mp.display_name,mp.gender,mp.birthday,mp.industry,mp.address,
+  return db.prepare(`SELECT mp.display_name,mp.phone,mp.birthday,
       pc.company_name,pc.job_title,pc.department,pc.service_description
     FROM member_profiles mp LEFT JOIN personal_cards pc ON pc.platform_user_id=mp.platform_user_id
     WHERE mp.platform_user_id=?`).bind(userId).first();
@@ -38,23 +41,13 @@ async function memberFacts(db,userId) {
 async function generateMemberCrmInsights(db,userId,apiKey,model) {
   const source=await memberFacts(db,userId);
   if(!source)throw new Error('找不到會員資料');
-  const facts={
-    name:text(source.display_name,120),
-    gender:text(source.gender,30),
-    birthday:text(source.birthday,10),
-    industry:text(source.industry,120),
-    address:text(source.address,300),
-    company:text(source.company_name,180),
-    title:text(source.job_title,120),
-    department:text(source.department,120),
-    service:text(source.service_description,1600),
-  };
+  const facts={name:text(source.display_name,120),mobile:text(source.phone,40).replace(/[^0-9+]/g,''),birthday:text(source.birthday,10),company:text(source.company_name,180),title:text(source.job_title,120)};
   const response=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
     body:JSON.stringify({
       model:model || 'gpt-5.6-terra',reasoning:{effort:'low'},max_output_tokens:900,
-      input:[{role:'user',content:`你是繁體中文會員 CRM 助手。請只依下列會員自行提供的基本資料與公開名片欄位，產出五項業務互動參考。\n\n${JSON.stringify(facts)}\n\n規則：\n- 每項 45 到 90 個繁體中文字，內容不足時明確說明需於後續互動補充，不可捏造。\n- 個性：只描述可能適合的溝通方式，不做心理診斷。\n- 興趣：只依業種、職務或服務推測可能關注的商務議題，不推論私人嗜好。\n- 財富：不可推論收入、資產、消費力或投資能力，只描述可能重視的商務價值與合作效益。\n- 健康：不可推論疾病或健康狀態，只提供工作節奏、活動參與及關懷方式建議。\n- 事業：聚焦專業定位、合作切入點及後續跟進方向。\n- 不得捏造獎項、客戶、年資、家庭、宗教、政治、醫療或財務資訊。只回傳 JSON。`}],
+      input:[{role:'user',content:`你是一位專業的商務 AI 心理與命理分析專家。請完全依照 LINE- 專案的五大標籤規則，根據姓名用字、手機號碼頻率與尾數、生日、公司及職稱，進行商務人格分析。\n\n姓名：${facts.name || '未知'}\n手機：${facts.mobile || '未知'}\n生日：${facts.birthday || '未知'}\n公司：${facts.company || '未知'}\n職稱：${facts.title || '未知'}\n\n分析邏輯與必含維度：\n1. 始終依姓名字形判斷行動／思考型、發音判斷外向／內斂、結構判斷主導／依附。\n2. 手機號碼依數字頻率分析（1領導、2協調、3表達、4穩定、5自由、6責任、7分析、8成就、9理想），以尾數判斷快攻／慢養決策模式，以奇偶比判斷衝動／保守。\n3. 有生日時，融合八字、紫微斗數、生命靈數與東西方星座學，分析先天傾向、潛能與目前適合的商務互動方式；資料不足時不可虛構精確命盤。\n4. 五項結果必須明確融合：VAK 感官接收偏好（視覺／聽覺／觸覺）、思考與決策模式（分析／數據／直覺）、行為與風險偏好（積極／消極、冒險／保守）。\n5. Personality、Hobbies、Wealth、Health、Career 每項必須為 20 至 40 個繁體中文字的完整情境描述，同時包含具體特徵與商務應對建議，不得只給單詞。\n6. Wealth 不得宣稱實際收入或資產；Health 不得診斷疾病；不可捏造獎項、客戶、年資、家庭、宗教或政治資訊。\n\n只回傳符合指定格式的 JSON。`}],
       text:{format:{type:'json_schema',name:'member_crm_five_insights',strict:true,schema:INSIGHTS_SCHEMA}},
     }),
   });
@@ -63,7 +56,7 @@ async function generateMemberCrmInsights(db,userId,apiKey,model) {
   const outputText=result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type==='output_text')?.text;
   if(!outputText)throw new Error('AI 未回傳會員 CRM 五大標籤');
   const parsed=JSON.parse(outputText);
-  return Object.fromEntries(INSIGHT_KEYS.map((key)=>[key,text(parsed[key],220)]));
+  return Object.fromEntries(Object.entries(OUTPUT_KEYS).map(([outputKey,storageKey])=>[storageKey,text(parsed[outputKey],220)]));
 }
 
 export async function processMemberCrmInsight(db,userId,apiKey,model) {
@@ -72,7 +65,7 @@ export async function processMemberCrmInsight(db,userId,apiKey,model) {
     status='processing',last_error='',updated_at=CURRENT_TIMESTAMP`).bind(userId).run();
   try {
     const cards=await generateMemberCrmInsights(db,userId,apiKey,model);
-    await db.prepare("UPDATE member_crm_insights SET status='ready',insights_json=?,last_error='',updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=?").bind(JSON.stringify(cards),userId).run();
+    await db.prepare("UPDATE member_crm_insights SET status='ready',insights_json=?,last_error='',analysis_version=?,updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=?").bind(JSON.stringify(cards),ANALYSIS_VERSION,userId).run();
   } catch(error) {
     await db.prepare("UPDATE member_crm_insights SET status='failed',last_error=?,updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=?").bind(text(error.message || '分析失敗',180),userId).run();
     console.error('Member CRM insight analysis failed',error);
@@ -84,12 +77,14 @@ export async function queueSystemMemberCrmInsightBackfill(db,limit=6) {
   const result=await db.prepare(`SELECT mp.platform_user_id FROM member_profiles mp
     LEFT JOIN member_crm_insights mci ON mci.platform_user_id=mp.platform_user_id
     WHERE mp.profile_completed_at IS NOT NULL AND mp.profile_completed_at!='' AND (
-      mci.platform_user_id IS NULL OR mci.status='failed'
+      mci.platform_user_id IS NULL
+      OR (COALESCE(mci.analysis_version,'')!=? AND mci.status NOT IN ('queued','processing'))
+      OR mci.status='failed'
       OR (mci.status='queued' AND mci.updated_at<=datetime('now','-10 minutes'))
       OR (mci.status='processing' AND mci.updated_at<=datetime('now','-30 minutes'))
-    ) ORDER BY COALESCE(mci.updated_at,mp.updated_at) ASC LIMIT ?`).bind(cappedLimit).all();
+    ) ORDER BY COALESCE(mci.updated_at,mp.updated_at) ASC LIMIT ?`).bind(ANALYSIS_VERSION,cappedLimit).all();
   const tasks=(result.results || []).map((row)=>({userId:row.platform_user_id}));
   if(tasks.length)await db.batch(tasks.map((task)=>db.prepare(`INSERT INTO member_crm_insights (platform_user_id,status,insights_json,last_error)
-    VALUES (?,'queued','{}','') ON CONFLICT(platform_user_id) DO UPDATE SET status='queued',last_error='',updated_at=CURRENT_TIMESTAMP`).bind(task.userId)));
+    VALUES (?,'queued','{}','') ON CONFLICT(platform_user_id) DO UPDATE SET status='queued',last_error='',analysis_version='',updated_at=CURRENT_TIMESTAMP`).bind(task.userId)));
   return tasks;
 }
