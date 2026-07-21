@@ -137,3 +137,20 @@
 
 /* 名片詳細資料：聯絡資料、編輯內容、數位名片、五大標籤四個分頁。 */
 .business-card-tabs{grid-template-columns:repeat(4,1fr)}
+
+/* LIFF 手機畫面：鎖定於裝置視窗，避免長網址或名片內容撐寬後整頁被縮小。 */
+html,body{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
+body{touch-action:pan-y}
+main#app{position:relative;width:100%;max-width:620px;overflow-x:clip}
+main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.line-source-ecard-top,.line-source-canvas-tools,.line-source-preview,.line-source-share{min-width:0;max-width:100%}
+.line-source-ecard input,.line-source-ecard textarea,.line-source-ecard select,.line-source-share label{min-width:0;max-width:100%}
+.line-source-share input{display:block;width:100%;text-overflow:ellipsis}
+.line-source-preview-card,.line-source-preview-card *{max-width:100%}
+.line-source-preview-body strong,.line-source-preview-body span{overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:679px){
+  .line-source-ecard-canvas{width:100%;overflow-x:hidden}
+  .line-source-ecard-canvas .line-source-ecard-top{width:100%;flex-wrap:wrap}
+  .line-source-ecard-top>p{flex:1 1 210px;min-width:0}
+  .line-source-ecard-top>div{flex:0 0 auto;max-width:100%}
+  .line-source-canvas-tools,.line-source-ecard-canvas .line-source-preview,.line-source-share{width:100%}
+}
