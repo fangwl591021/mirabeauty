@@ -1365,7 +1365,12 @@ async function showContactEditor(card) {
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(card)}<div class="business-card-contact-actions">${cardActionItems(card).map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
   if (view === "edit") panel = `<form id="collectionCardForm" class="business-card-form">${collectionForm(card,"contact")}<button class="btn full" type="submit">儲存聯絡資料</button><button class="btn danger full" type="button" id="deleteContact">刪除名片</button></form>`;
   if (view === "digital") panel = lineSourceEcardEditor(card, selected, { collection:true });
-  if (view === "insights") panel = crmInsightSection(card);
+  if (view === "insights") {
+    const insightCard = { ...card };
+    const viewed = cardWithVersion(card, selected.id);
+    if (!viewed.coverUrl && card.hasImage) insightCard.imageUrl = await authorizedImageUrl(card);
+    panel = `<section class="crm-insight-reference"><div class="crm-insight-reference-heading"><h3>名片對照</h3><span>以下標籤依這張名片的公開內容產生</span></div>${renderPublicEcard(insightCard, selected.id).html}</section>${crmInsightSection(card)}`;
+  }
   layout(`<section class="business-card collection-editor"><div class="business-card-title"><button class="back-card" id="backCollection" aria-label="返回">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
   $("#backCollection").onclick=()=>{ state.collectionCardView=""; state.collectionCardVersion=""; cardCollection(); };
   document.querySelectorAll("[data-collection-card-tab]").forEach((button) => button.onclick = () => { state.collectionCardView=button.dataset.collectionCardTab; showContactEditor(card); });
