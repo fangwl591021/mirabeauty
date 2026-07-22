@@ -816,6 +816,23 @@ async function app(request, env, ctx) {
       }
       return json({success:true});
     }
+    if(request.method==="DELETE"&&adminCardMatch){
+      const kind=adminCardMatch[1],cardId=decodeURIComponent(adminCardMatch[2]);
+      if(kind==="collection"){
+        const existing=await env.DB.prepare("SELECT scanner_user_id FROM contact_cards WHERE id=? AND status='active'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到收藏名片"},404);
+        await deleteContact(env.DB,env.MEDIA,existing.scanner_user_id,cardId);
+        await env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.deleted',?)").bind(newId("audit"),admin.userId,existing.scanner_user_id,JSON.stringify({cardId,kind})).run();
+      }else{
+        const existing=await env.DB.prepare("SELECT platform_user_id FROM personal_cards WHERE id=? AND status!='archived'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到會員名片"},404);
+        await env.DB.batch([
+          env.DB.prepare("UPDATE personal_cards SET status='archived',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='archived'").bind(cardId),
+          env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.deleted',?)").bind(newId("audit"),admin.userId,existing.platform_user_id,JSON.stringify({cardId,kind})),
+        ]);
+      }
+      return json({success:true});
+    }
     if (request.method === "GET" && url.pathname === "/v1/admin/members") {
       const rows = await env.DB.prepare(`
         SELECT pu.id, pu.status, pu.created_at, mp.display_name, mp.picture_url, mp.phone, mp.email,
