@@ -154,3 +154,12 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
   .line-source-ecard-top>div{flex:0 0 auto;max-width:100%}
   .line-source-canvas-tools,.line-source-ecard-canvas .line-source-preview,.line-source-share{width:100%}
 }
+
+/* 五大標籤：在分析結果上方顯示同一張名片，方便直接對照。 */
+.crm-insight-reference{padding:18px 0 4px;border-bottom:1px solid #f0d9df}
+.crm-insight-reference-heading{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.crm-insight-reference-heading h3{margin:0;color:#1d3156;font-size:18px}
+.crm-insight-reference-heading span{color:#71809b;font-size:12px}
+.crm-insight-reference .line-source-public{width:min(100%,430px);margin:14px auto 20px}
+.crm-insight-reference+.crm-insights{margin-top:0;border-top:0}
+@media(max-width:520px){.crm-insight-reference{padding-top:14px}.crm-insight-reference .line-source-public{margin-bottom:16px}}
